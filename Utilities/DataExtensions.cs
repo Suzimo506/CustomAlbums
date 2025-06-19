@@ -26,11 +26,12 @@ namespace CustomAlbums.Utilities
         public static int GetIndexByUid(this Il2CppSystem.Collections.Generic.List<IData> dataList, string uid, int difficulty)
         {
             var i = 0;
+            var fullUid = $"{uid}_{difficulty}";
 
             // For loop doesn't work here
             foreach (var data in dataList)
             {
-                if (data.GetUid() == $"{uid}_{difficulty}")
+                if (data.GetUid() == fullUid)
                 {
                     return i;
                 }
@@ -50,9 +51,11 @@ namespace CustomAlbums.Utilities
         /// <returns>The IData object, or null if not found.</returns>
         public static IData GetIDataByUid(this Il2CppSystem.Collections.Generic.List<IData> dataList, string uid, int difficulty)
         {
+            var fullUid = $"{uid}_{difficulty}";
+
             foreach (var data in dataList)
             {
-                if (data.GetUid() == $"{uid}_{difficulty}")
+                if (data.GetUid() == fullUid)
                 {
                     return data;
                 }
