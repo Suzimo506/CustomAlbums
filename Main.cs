@@ -52,6 +52,12 @@ namespace CustomAlbums
             base.OnFixedUpdate();
             // TODO: Actually write HotReload
             // HotReloadManager.FixedUpdate();
+            
+            // Dispatcher for GIF covers
+            if (CoverManager.GifAlbumDatas.TryDequeue(out var gifData))
+            {
+                CoverManager.LoadAnimatedCover(gifData);
+            }
         }
 
         public override void OnSceneWasLoaded(int buildIndex, string sceneName)

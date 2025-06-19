@@ -51,9 +51,10 @@ namespace CustomAlbums.Managers
                 // Initialize pack and variables
                 var pack = PackManager.CreatePack(json);
                 CurrentPack = pack.Title;
-                pack.StartIndex = MaxCount;
 
                 MaxCount = Math.Max(LoadedAlbums.Count, MaxCount);
+
+                pack.StartIndex = MaxCount;
 
                 // Count successfully loaded .mdm files
                 pack.Length = mdms.Count(mdm => LoadOne(directory, mdm, mdm.Name) != null);
@@ -86,9 +87,11 @@ namespace CustomAlbums.Managers
 
                 LoadedAlbums.Add(albumName, album);
 
-                if (album.HasPng || album.HasGif)
+                if (album.HasPng)
                     ResourcesManager.instance.LoadFromName<Sprite>($"{albumName}_cover").hideFlags |=
                         HideFlags.DontUnloadUnusedAsset;
+
+                if (album.HasGif) Task.Run(() => CoverManager.LoadGif(album));
 
                 Logger.Msg($"Loaded {albumName}: {album.Info.Name}");
                 OnAlbumLoaded?.Invoke(typeof(AlbumManager), new AlbumEventArgs(album));
@@ -120,9 +123,11 @@ namespace CustomAlbums.Managers
                 
                 LoadedAlbums.Add(albumName, album);
 
-                if (album.HasPng || album.HasGif)
+                if (album.HasPng)
                     ResourcesManager.instance.LoadFromName<Sprite>($"{albumName}_cover").hideFlags |=
                         HideFlags.DontUnloadUnusedAsset;
+
+                if (album.HasGif) Task.Run(() => CoverManager.LoadGif(album));
 
                 Logger.Msg($"Loaded {albumName}: {album.Info.Name}");
                 OnAlbumLoaded?.Invoke(typeof(AlbumManager), new AlbumEventArgs(album));
@@ -147,21 +152,17 @@ namespace CustomAlbums.Managers
             files.AddRange(Directory.GetDirectories(SearchPath));
             packs.AddRange(Directory.GetFiles(SearchPath, PackSearchPattern));
 
-            foreach (var file in files) LoadOne(file);
             foreach (var pack in packs) LoadPack(pack);
+            foreach (var file in files) LoadOne(file);
 
             Logger.Msg($"Finished loading {LoadedAlbums.Count} albums.", false);
         }
 
         public static IEnumerable<string> GetAllUid()
-        {
-            return LoadedAlbums.Select(album => $"{Uid}-{album.Value.Index}");
-        }
+            => LoadedAlbums.Select(album => $"{Uid}-{album.Value.Index}");
 
         public static Album GetByUid(string uid)
-        {
-            return LoadedAlbums.FirstOrDefault(album => album.Value.Index == uid[4..].ParseAsInt()).Value;
-        }
+            => LoadedAlbums.FirstOrDefault(album => album.Value.Index == uid[4..].ParseAsInt()).Value;
         public static string GetAlbumNameFromUid(string uid)
         {
             var album = GetByUid(uid);

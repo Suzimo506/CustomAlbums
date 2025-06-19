@@ -73,7 +73,7 @@ namespace CustomAlbums.Utilities
             return true;
         }
 
-        public static unsafe Il2CppStructArray<T> MemCopyFromManaged<T>(this T[] arr, long? size = null) where T : unmanaged
+        public static unsafe Il2CppStructArray<T> CopyFromManaged<T>(this T[] arr, long? size = null) where T : unmanaged
         {
             var len = arr.Length;
             if (size is not null && size < 0) 
@@ -82,7 +82,6 @@ namespace CustomAlbums.Utilities
             var lenCopy = size ?? len;
             if (lenCopy > len)
                 throw new ArgumentOutOfRangeException(nameof(size), "The size to copy is larger than the array length.");
-
 
             var il2CppArray = new Il2CppStructArray<T>(len);
 
