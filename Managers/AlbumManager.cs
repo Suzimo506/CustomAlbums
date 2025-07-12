@@ -49,7 +49,7 @@ namespace CustomAlbums.Managers
                 var json = zipFiles.Entries.FirstOrDefault(file => file.Name.EndsWith(".json"));
 
                 // Initialize pack and variables
-                var pack = PackManager.CreatePack(json);
+                var pack = PackManager.CreatePack(json, directory);
                 CurrentPack = pack.Title;
 
                 MaxCount = Math.Max(LoadedAlbums.Count, MaxCount);

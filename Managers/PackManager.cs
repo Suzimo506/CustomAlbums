@@ -4,10 +4,10 @@ using System.IO.Compression;
 
 namespace CustomAlbums.Managers
 {
-    internal class PackManager
+    public class PackManager
     {
         private static readonly List<Pack> Packs = new();
-        internal static Pack GetPackFromUid(string uid)
+        public static Pack GetPackFromUid(string uid)
         {
             // If the uid is not custom or parsing the index fails
             if (!uid.StartsWith($"{AlbumManager.Uid}-") || 
@@ -21,9 +21,11 @@ namespace CustomAlbums.Managers
             return retrievedPack?.Length is 0 ? null : retrievedPack;
         }
 
-        internal static Pack CreatePack(ZipArchiveEntry json)
+        internal static Pack CreatePack(ZipArchiveEntry json, string path)
         {
-            return Json.Deserialize<Pack>(json.Open());
+            var pack = Json.Deserialize<Pack>(json.Open());
+            pack.Path = path;
+            return pack;
         }
 
         internal static void AddPack(Pack pack)
