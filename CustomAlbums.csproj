@@ -20,7 +20,7 @@
 	</ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.40">
+        <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.43">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
@@ -28,7 +28,7 @@
 			<ExcludeAssets>contentFiles</ExcludeAssets>
 		</PackageReference>
         <PackageReference Include="NLayer" Version="1.16.0" />
-        <PackageReference Include="SixLabors.ImageSharp" Version="3.1.7" />
+        <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
         <PackageReference Include="System.Net.Http" Version="4.3.4" />
         <PackageReference Include="System.Text.RegularExpressions" Version="4.3.1" />
     </ItemGroup>
