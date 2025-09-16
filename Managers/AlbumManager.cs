@@ -78,6 +78,8 @@ namespace CustomAlbums.Managers
             {
                 Logger.Warning($"Failed to load album at {directory}. Reason: {ex.Message}");
                 Logger.Warning(ex.StackTrace);
+
+                return null;
             }
         }
 
