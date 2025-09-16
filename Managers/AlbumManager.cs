@@ -37,7 +37,7 @@ namespace CustomAlbums.Managers
         public static Dictionary<string, Album> LoadedAlbums { get; } = new();
 
 
-        public static void LoadPack(string directory)
+        public static Pack LoadPack(string directory)
         {
             // Get the files from the directory
             try
@@ -57,11 +57,22 @@ namespace CustomAlbums.Managers
                 pack.StartIndex = MaxCount;
 
                 // Count successfully loaded .mdm files
-                pack.Length = mdms.Count(mdm => LoadOne(directory, mdm, mdm.Name) != null);
+                pack.Length = mdms.Count(mdm =>
+                {
+                    var album = LoadOne(directory, mdm, mdm.FullName);
+                    if (album is not null)
+                    {
+                        pack.Albums.Add(album);
+                        return true;
+                    }
+                    return false;
+                });
 
                 // Set the current pack to null and add the pack to the pack list
                 CurrentPack = null;
                 PackManager.AddPack(pack);
+
+                return pack;
             }
             catch (Exception ex)
             {

@@ -11,6 +11,7 @@ namespace CustomAlbums.Data
         public bool LongTextScroll { get; set; } = false;
 
         public string Path { get; set; } = string.Empty;
+        public List<Album> Albums { get; set; } = new();
 
         internal int StartIndex;
         internal int Length;
