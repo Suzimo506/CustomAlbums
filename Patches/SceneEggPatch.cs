@@ -65,7 +65,7 @@ namespace CustomAlbums.Patches
 
                 // Ignore the actual SceneEggs
                 if (IgnoreSceneEggs(out _, SceneEggs.Arknights, SceneEggs.Cytus, SceneEggs.None,
-                        SceneEggs.Queen, SceneEggs.Touhou, SceneEggs.Wacca, SceneEggs.Miku, SceneEggs.BadApple, SceneEggs.RinLen)) return true;
+                        SceneEggs.Queen, SceneEggs.Touhou, SceneEggs.Wacca, SceneEggs.Miku, SceneEggs.BadApple, SceneEggs.RinLen, SceneEggs.BlueArchive)) return true;
 
                 if (sceneFestivalName == "scene_05") __result = "scene_05_christmas";
                 return false;
@@ -83,7 +83,7 @@ namespace CustomAlbums.Patches
                 // If the boss is not 0501_boss then there is no Christmas
                 if (bossFestivalName != "0501_boss") return true;
                 if (IgnoreSceneEggs(out _, SceneEggs.Arknights, SceneEggs.Cytus, SceneEggs.None,
-                        SceneEggs.Queen, SceneEggs.Touhou, SceneEggs.Wacca, SceneEggs.Miku, SceneEggs.BadApple, SceneEggs.RinLen)) return true;
+                        SceneEggs.Queen, SceneEggs.Touhou, SceneEggs.Wacca, SceneEggs.Miku, SceneEggs.BadApple, SceneEggs.RinLen, SceneEggs.BlueArchive)) return true;
 
                 __result = "0501_boss_christmas";
                 return false;
