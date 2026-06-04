@@ -151,6 +151,12 @@
             <HintPath>$(MelonAssemblies)\UnityEngine.AnimationModule.dll</HintPath>
         </Reference>
         <Reference
+            Include="UnityEngine.TextRenderingModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+            <SpecificVersion>false</SpecificVersion>
+            <Private>false</Private>
+            <HintPath>$(MelonAssemblies)\UnityEngine.TextRenderingModule.dll</HintPath>
+        </Reference>
+        <Reference
             Include="UnityEngine.AudioModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
             <SpecificVersion>false</SpecificVersion>
             <Private>false</Private>
@@ -178,6 +184,12 @@
             <SpecificVersion>false</SpecificVersion>
             <Private>false</Private>
             <HintPath>$(MelonAssemblies)\UnityEngine.UnityWebRequestModule.dll</HintPath>
+        </Reference>
+        <Reference
+            Include="UnityEngine.InputLegacyModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+            <SpecificVersion>false</SpecificVersion>
+            <Private>false</Private>
+            <HintPath>$(MelonAssemblies)\UnityEngine.InputLegacyModule.dll</HintPath>
         </Reference>
     </ItemGroup>
 </Project>

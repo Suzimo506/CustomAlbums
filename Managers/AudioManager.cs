@@ -1,4 +1,5 @@
 ﻿using CustomAlbums.Data;
+using CustomAlbums.Utilities;
 using Il2CppAssets.Scripts.PeroTools.Commons;
 using Il2CppAssets.Scripts.PeroTools.Managers;
 using NAudio.Vorbis;
@@ -169,19 +170,12 @@ namespace CustomAlbums.Managers
         public static AudioClip GetAudio(this Album album, string name = "music")
         {
             var key = $"{album.AlbumName}_{name}";
-            if (album.HasFile($"{name}.ogg"))
-            {
-                // Load music.ogg
-                var stream = album.OpenMemoryStream($"{name}.ogg");
-                return LoadClipFromOgg(stream, key);
-            }
 
-            if (album.HasFile($"{name}.mp3"))
-            {
-                // Load music.mp3
-                var stream = album.OpenMemoryStream($"{name}.mp3");
-                return LoadClipFromMp3(stream, key);
-            }
+            if (album.OpenNullableStream($"{name}.ogg") is { } oggStream)
+                return LoadClipFromOgg(oggStream.ToMemoryStream(), key);
+
+            if (album.OpenNullableStream($"{name}.mp3") is { } mp3Stream)
+                return LoadClipFromMp3(mp3Stream.ToMemoryStream(), key);
 
             // No music file found
             Logger.Error($"Could not find audio file for {name} in {album.Info.Name}");

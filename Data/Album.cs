@@ -1,4 +1,4 @@
-﻿using System.IO.Compression;
+using System.IO.Compression;
 using CustomAlbums.Managers;
 using CustomAlbums.Utilities;
 using UnityEngine;
@@ -9,6 +9,36 @@ namespace CustomAlbums.Data
     public class Album
     {
         private static readonly Logger Logger = new(nameof(Album));
+
+        public Album(string directory, ZipArchiveEntry mdm, int index, string packName = null)
+        {
+            if (!string.IsNullOrEmpty(packName)) PackName = packName;
+            
+            using var mdmStream = mdm.Open();
+            using var openedZip = new ZipArchive(mdmStream);
+
+            var info = openedZip.GetEntry("info.json");
+            if (info == null)
+            {
+                Logger.Error($"Could not find info.json in package: {mdm.Name}");
+                throw new FileNotFoundException();
+            }
+
+            using var stream = info.Open();
+            Info = Json.Deserialize<AlbumInfo>(stream);
+            IsPackaged = true;
+
+            // CurrentPack will always be null if album is not in a pack
+            IsPack = AlbumManager.CurrentPack != null;
+
+            HasGif = openedZip.GetEntry("cover.gif") != null;
+            HasPng = openedZip.GetEntry("cover.png") != null;
+
+            Index = index;
+            Path = directory;
+            PackAlbumName = System.IO.Path.GetFileNameWithoutExtension(mdm.Name);
+            GetSheets();
+        }
 
         public Album(string path, int index, string packName = null)
         {
@@ -24,6 +54,8 @@ namespace CustomAlbums.Data
 
                 using var fileStream = File.OpenRead($"{path}\\info.json");
                 Info = Json.Deserialize<AlbumInfo>(fileStream);
+                HasGif = File.Exists(System.IO.Path.Combine(path, "cover.gif"));
+                HasPng = File.Exists(System.IO.Path.Combine(path, "cover.png"));
             }
             else if (File.Exists(path))
             {
@@ -43,6 +75,9 @@ namespace CustomAlbums.Data
                 
                 // CurrentPack will always be null if album is not in a pack
                 IsPack = AlbumManager.CurrentPack != null;
+
+                HasGif = zip.GetEntry("cover.gif") != null;
+                HasPng = zip.GetEntry("cover.png") != null;
             }
             else
             {
@@ -56,10 +91,13 @@ namespace CustomAlbums.Data
             GetSheets();
         }
 
+        public string PackAlbumName { get; } = string.Empty;
         public int Index { get; }
         public string Path { get; }
         public bool IsPackaged { get; }
         public bool IsPack { get; }
+        public bool HasPng { get; }
+        public bool HasGif { get; }
         public string PackName { get; }
         public AlbumInfo Info { get; }
         public Sprite Cover => this.GetCover();
@@ -69,12 +107,26 @@ namespace CustomAlbums.Data
         public Dictionary<int, Sheet> Sheets { get; } = new();
         public string AlbumName =>
             IsPackaged ? 
-                $"album_{System.IO.Path.GetFileNameWithoutExtension(Path)}{(PackName != null ? $"_{PackName}" : string.Empty)}" 
+                $"album_{(string.IsNullOrEmpty(PackAlbumName) ? System.IO.Path.GetFileNameWithoutExtension(Path) : PackAlbumName)}{(PackName != null && !string.IsNullOrEmpty(PackAlbumName) ? $"_{PackName}" : string.Empty)}" 
                 : $"album_{System.IO.Path.GetFileName(Path)}_folder";
         public string Uid => $"{AlbumManager.Uid}-{Index}";
 
         public bool HasFile(string name)
         {
+            if (IsPack && !string.IsNullOrEmpty(PackAlbumName))
+            {
+                if (!File.Exists(Path)) return false;
+                try
+                {
+                    using var mdp = ZipFile.OpenRead(Path);
+                    using var openedMdm = mdp.GetNestedZip(PackAlbumName + ".mdm");
+                    return openedMdm.GetEntry(name) != null;
+                }
+                catch (IOException)
+                {
+                    return false;
+                }
+            }
             if (IsPackaged)
             {
                 if (!File.Exists(Path)) return false;
@@ -96,6 +148,20 @@ namespace CustomAlbums.Data
 
         public Stream OpenFileStreamIfPossible(string file)
         {
+            if (IsPack && !string.IsNullOrEmpty(PackAlbumName))
+            {
+                using var mdp = ZipFile.OpenRead(Path);
+                using var openedMdm = mdp.GetNestedZip(PackAlbumName + ".mdm");
+                var entry = openedMdm.GetEntry(file);
+
+                if (entry != null)
+                {
+                    return entry.Open().ToMemoryStream();
+                }
+
+                Logger.Error($"Could not find file in package: {file}");
+                throw new FileNotFoundException();
+            }
             if (IsPackaged)
             {
                 using var zip = ZipFile.OpenRead(Path);
@@ -120,6 +186,19 @@ namespace CustomAlbums.Data
 
         public Stream OpenNullableStream(string file)
         {
+            if (IsPack && !string.IsNullOrEmpty(PackAlbumName))
+            {
+                using var mdp = ZipFile.OpenRead(Path);
+                using var openedMdm = mdp.GetNestedZip(PackAlbumName + ".mdm");
+                var entry = openedMdm.GetEntry(file);
+
+                if (entry != null)
+                {
+                    return entry.Open().ToMemoryStream();
+                }
+
+                return null;
+            }
             if (IsPackaged)
             {
                 using var zip = ZipFile.OpenRead(Path);
@@ -142,6 +221,21 @@ namespace CustomAlbums.Data
 
         public MemoryStream OpenMemoryStream(string file)
         {
+            if (IsPack && !string.IsNullOrEmpty(PackAlbumName))
+            {
+                using var mdp = ZipFile.OpenRead(Path);
+                using var openedMdm = mdp.GetNestedZip(PackAlbumName + ".mdm");
+                var entry = openedMdm.GetEntry(file);
+
+                if (entry != null)
+                {
+                    return entry.Open().ToMemoryStream();
+                }
+
+                Logger.Error($"Could not find file in package: {file}");
+                throw new FileNotFoundException();
+            }
+
             if (IsPackaged)
             {
                 using var zip = ZipFile.OpenRead(Path);

@@ -397,3 +397,11 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 .idea
+
+# Custom exclusions
+Headquarters.dll
+HQ.cs.txt
+HQ_utf8.cs.txt
+test.cs
+metadata_injection_attempts.md
+

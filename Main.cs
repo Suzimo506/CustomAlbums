@@ -1,4 +1,4 @@
-﻿using CustomAlbums.Managers;
+using CustomAlbums.Managers;
 using CustomAlbums.Patches;
 using CustomAlbums.Utilities;
 using MelonLoader;
@@ -20,6 +20,7 @@ namespace CustomAlbums
 
             if (!Directory.Exists(AlbumManager.SearchPath)) Directory.CreateDirectory(AlbumManager.SearchPath);
             
+            TitleConfigManager.Load();
             ModSettings.Register();
             AssetPatch.AttachHook();
             SavePatch.AttachHook();
@@ -31,8 +32,7 @@ namespace CustomAlbums
         public override void OnLateInitializeMelon()
         {
             base.OnLateInitializeMelon();
-            // TODO: Actually write HotReload
-            // HotReloadManager.OnLateInitializeMelon();
+            HotReloadManager.OnLateInitializeMelon();
         }
 
         /// <summary>
@@ -50,8 +50,13 @@ namespace CustomAlbums
         public override void OnFixedUpdate()
         {
             base.OnFixedUpdate();
-            // TODO: Actually write HotReload
-            // HotReloadManager.FixedUpdate();
+            HotReloadManager.FixedUpdate();
+            
+            // Dispatcher for GIF covers
+            if (CoverManager.GifAlbumDatas.TryDequeue(out var gifData))
+            {
+                CoverManager.LoadAnimatedCover(gifData);
+            }
         }
 
         public override void OnSceneWasLoaded(int buildIndex, string sceneName)

@@ -6,10 +6,10 @@ using System.IO.Compression;
 
 namespace CustomAlbums.Managers
 {
-    internal class SaveManager
+    public class SaveManager
     {
         private const string SaveLocation = "UserData";
-        internal static CustomAlbumsSave SaveData;
+        public static CustomAlbumsSave SaveData { get; private set; }
         internal static Logger Logger = new(nameof(SaveManager));
         internal static string PreviousScore { get; set; } = "-";
 

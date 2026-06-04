@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -92,14 +93,32 @@ namespace CustomAlbums.Patches
             {
                 var jsonArray = new JsonArray();
 
+                // Pre-calculate the first song of each pack to optimize performance to O(N)
+                var firstSongs = new HashSet<string>(AlbumManager.LoadedAlbums.Values
+                    .GroupBy(a => PackManager.GetPackFromUid(a.Uid))
+                    .Select(g => g.OrderBy(a => a.Index).First().Uid));
+
                 // Add each custom charts' data to the album
                 foreach (var (albumStr, albumObj) in AlbumManager.LoadedAlbums)
                 {
                     var albumInfo = albumObj.Info;
+                    var pack = PackManager.GetPackFromUid(albumObj.Uid);
+                    var isFirstSong = firstSongs.Contains(albumObj.Uid);
+                    var titleString = pack?.Title ?? "Unclassified";
+
+                    var displayName = albumInfo.Name;
+                    if (isFirstSong)
+                    {
+                        var titleConfig = TitleConfigManager.Config;
+                        var formatStart = $"{(titleConfig.IsBold ? "<b>" : "")}{(titleConfig.IsItalic ? "<i>" : "")}<color={titleConfig.Color}><size={titleConfig.Size}>";
+                        var formatEnd = $"</size></color>{(titleConfig.IsItalic ? "</i>" : "")}{(titleConfig.IsBold ? "</b>" : "")}";
+                        displayName = $"{formatStart}【{titleString}】{formatEnd} {albumInfo.Name}";
+                    }
+
                     var customChartJson = new
                     {
                         uid = albumObj.Uid,
-                        name = albumInfo.Name,
+                        name = displayName,
                         author = albumInfo.Author,
                         bpm = albumInfo.Bpm,
                         music = $"{albumStr}_music",
@@ -177,15 +196,36 @@ namespace CustomAlbums.Patches
             {
                 var jsonArray = new JsonArray();
 
+                // Pre-calculate the first song of each pack to optimize performance to O(N)
+                var firstSongs = new HashSet<string>(AlbumManager.LoadedAlbums.Values
+                    .GroupBy(a => PackManager.GetPackFromUid(a.Uid))
+                    .Select(g => g.OrderBy(a => a.Index).First().Uid));
+
                 // This should technically be written to retrieve and add the name of the chart based on your selected language
                 // However this only grabs whatever name is given in the info.json
                 // Very likely not a big deal
                 foreach (var (_, value) in AlbumManager.LoadedAlbums)
+                {
+                    var albumInfo = value.Info;
+                    var pack = PackManager.GetPackFromUid(value.Uid);
+                    var isFirstSong = firstSongs.Contains(value.Uid);
+                    var titleString = pack?.Title ?? "Unclassified";
+
+                    var displayName = albumInfo.Name;
+                    if (isFirstSong)
+                    {
+                        var titleConfig = TitleConfigManager.Config;
+                        var formatStart = $"{(titleConfig.IsBold ? "<b>" : "")}{(titleConfig.IsItalic ? "<i>" : "")}<color={titleConfig.Color}><size={titleConfig.Size}>";
+                        var formatEnd = $"</size></color>{(titleConfig.IsItalic ? "</i>" : "")}{(titleConfig.IsBold ? "</b>" : "")}";
+                        displayName = $"{formatStart}【{titleString}】{formatEnd} {albumInfo.Name}";
+                    }
+
                     jsonArray.Add(new
                     {
-                        name = value.Info.Name,
+                        name = displayName,
                         author = value.Info.Author
                     });
+                }
 
                 // Create and add the new asset with the names of each custom chart
                 var newAsset = CreateTextAsset(assetName, JsonSerializer.Serialize(jsonArray));

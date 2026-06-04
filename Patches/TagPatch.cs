@@ -1,4 +1,4 @@
-﻿using CustomAlbums.Managers;
+using CustomAlbums.Managers;
 using CustomAlbums.Utilities;
 using HarmonyLib;
 using Il2Cpp;

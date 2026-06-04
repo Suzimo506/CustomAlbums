@@ -1,4 +1,6 @@
-﻿using System.Runtime.CompilerServices;
+using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using CustomAlbums.Data;
 using CustomAlbums.Utilities;
 using SixLabors.ImageSharp;
@@ -10,8 +12,35 @@ using Logger = CustomAlbums.Utilities.Logger;
 
 namespace CustomAlbums.Managers
 {
+    public readonly struct RawFrame
+    {
+        public readonly int Width;
+        public readonly int Height;
+        public readonly byte[] Buffer;
+
+        public RawFrame(int width, int height, byte[] buffer)
+        {
+            Width = width;
+            Height = height;
+            Buffer = buffer;
+        }
+    } 
+
+    public class GifAlbumData
+    {
+        public readonly Album Album;
+        public readonly RawFrame[] Frames;
+        public readonly int FramesPerSecond;
+        public GifAlbumData(Album album, RawFrame[] frames, int fps)
+        {
+            Album = album;  
+            Frames = frames;
+            FramesPerSecond = fps;
+        }
+    }
     public static class CoverManager
     {
+        internal static readonly ConcurrentQueue<GifAlbumData> GifAlbumDatas = new();
         internal static readonly Dictionary<int, Sprite> CachedCovers = new();
         internal static readonly Dictionary<int, AnimatedCover> CachedAnimatedCovers = new();
         private static readonly Logger Logger = new(nameof(CoverManager));
@@ -20,10 +49,11 @@ namespace CustomAlbums.Managers
 
         public static Sprite GetCover(this Album album)
         {
-            if (!album.HasFile("cover.png")) return null;
+            if (!album.HasPng) return null;
             if (CachedCovers.TryGetValue(album.Index, out var cached)) return cached;
 
-            using var stream = album.OpenMemoryStream("cover.png");
+            using var stream = album.OpenNullableStream("cover.png")?.ToMemoryStream();
+            if (stream is null) return null;
 
             var bytes = stream.ReadFully();
 
@@ -32,7 +62,7 @@ namespace CustomAlbums.Managers
             {
                 wrapMode = TextureWrapMode.MirrorOnce
             };
-            texture.LoadImage(bytes);
+            texture.LoadImage(bytes.CopyFromManaged());
 
             var cover = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
             CachedCovers.Add(album.Index, cover);
@@ -40,52 +70,94 @@ namespace CustomAlbums.Managers
             return cover;
         }
 
-        public static unsafe AnimatedCover GetAnimatedCover(this Album album)
+        private static readonly System.Collections.Concurrent.ConcurrentQueue<Album> GifQueue = new();
+        private static bool _isProcessingQueue = false;
+
+        // Enqueue charts that need GIF loading to the serial queue
+        public static void EnqueueGifToLoad(Album album)
         {
-            // Early return statements
-            if (!album.HasFile("cover.gif")) return null;
-            if (CachedAnimatedCovers.TryGetValue(album.Index, out var cached)) return cached;
-
-            Config.PreferContiguousImageBuffers = true;
-
-            // Open and load the gif
-            using var stream = album.OpenMemoryStream("cover.gif");
-            using var gif = Image.Load<Rgba32>(new DecoderOptions { Configuration = Config }, stream);
-
-            // For some reason Unity loads textures upside down?
-            // Flip the frames
-            gif.Mutate(c => c.Flip(FlipMode.Vertical));
-
-            var sprites = new Sprite[gif.Frames.Count];
-
-            for (var i = 0; i < gif.Frames.Count; i++)
+            if (!album.HasGif) return;
+            GifQueue.Enqueue(album);
+            if (!_isProcessingQueue)
             {
-                // Get frame data
-                var frame = gif.Frames[i];
-                var width = frame.Width;
-                var height = frame.Height;
+                _isProcessingQueue = true;
+                Task.Run(ProcessGifQueue);
+            }
+        }
 
-                // Get frame pixel data
-                //
-                // This should really be done with CopyPixelData and a byte array
-                // but that causes a 6MB+ copy of an array that slows things down by a bit
-                // The more efficient way is to retrieve an IntPtr that stores the data and pass that with a size instead
-                var getPixelDataResult = frame.DangerousTryGetSinglePixelMemory(out var memory);
-                if (!getPixelDataResult)
+        // Background single-thread loop to process GIF decoding in the queue
+        private static async Task ProcessGifQueue()
+        {
+            try
+            {
+                while (GifQueue.TryDequeue(out var album))
                 {
-                    Logger.Error("Failed to get pixel data.");
-                    return null;
+                    await LoadGif(album);
                 }
+            }
+            finally
+            {
+                _isProcessingQueue = false;
+            }
+        }
 
-                using var handle = memory.Pin();
+        public static async Task LoadGif(this Album album)
+        {
+            try
+            {
+                if (!album.HasGif) return;
+                
+                Config.PreferContiguousImageBuffers = true;
+
+                using var stream = album.OpenNullableStream("cover.gif");
+                if (stream is null) return;
+
+                using var gif = await Image.LoadAsync<Rgba32>(new DecoderOptions { Configuration = Config }, stream);
+                gif.Mutate(c => c.Flip(FlipMode.Vertical));
+
+                var rawFrames = new RawFrame[gif.Frames.Count];
+                
+                Parallel.For(0, gif.Frames.Count, i =>
+                {
+                    var frame = gif.Frames[i];
+                    if (frame.DangerousTryGetSinglePixelMemory(out var memory))
+                    {
+                        var buffer = new byte[memory.Length * Unsafe.SizeOf<Rgba32>()];
+                        memory.Span.CopyTo(MemoryMarshal.Cast<byte, Rgba32>(buffer.AsSpan()));
+                        rawFrames[i] = new RawFrame(frame.Width, frame.Height, buffer);
+                    }
+                });
+
+                GifAlbumDatas.Enqueue(new(album, rawFrames, gif.Frames.RootFrame.Metadata.GetGifMetadata().FrameDelay * 10));
+            }
+            catch (Exception ex)
+            {
+                // Catch exceptions to prevent crashing
+                Logger.Warning($"Failed to load animated cover for {album.AlbumName}. Reason: {ex.Message}");
+            }
+        }
+
+        public static AnimatedCover GetAnimatedCover(this Album album)
+            => CachedAnimatedCovers.GetValueOrDefault(album.Index);
+
+        public static AnimatedCover LoadAnimatedCover(GifAlbumData data)
+        {
+            if (CachedAnimatedCovers.TryGetValue(data.Album.Index, out var cached)) return cached;
+
+            var rawFrames = data.Frames;
+            var sprites = new Sprite[rawFrames.Length];
+            
+            for (var i = 0; i < rawFrames.Length; i++)
+            {
+                var frame = rawFrames[i];
 
                 // Create the textures
-                var texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
+                var texture = new Texture2D(frame.Width, frame.Height, TextureFormat.RGBA32, false)
                 {
                     wrapMode = TextureWrapMode.MirrorOnce
                 };
-                texture.LoadRawTextureData((IntPtr)handle.Pointer, memory.Length * Unsafe.SizeOf<Rgba32>());
-                texture.Apply(false);
+                texture.LoadRawTextureData(frame.Buffer.CopyFromManaged());
+                texture.Apply(false, true);
 
                 // Create the sprite with the given texture and add it to the sprites array
                 var sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height),
@@ -95,8 +167,8 @@ namespace CustomAlbums.Managers
             }
 
             // Create and add cover to cache
-            var cover = new AnimatedCover(sprites, gif.Frames.RootFrame.Metadata.GetGifMetadata().FrameDelay * 10);
-            CachedAnimatedCovers.Add(album.Index, cover);
+            var cover = new AnimatedCover(sprites, data.FramesPerSecond);
+            CachedAnimatedCovers.Add(data.Album.Index, cover);
 
             return cover;
         }

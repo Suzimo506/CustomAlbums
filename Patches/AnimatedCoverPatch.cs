@@ -1,4 +1,4 @@
-﻿using CustomAlbums.Managers;
+using CustomAlbums.Managers;
 using HarmonyLib;
 using Il2Cpp;
 using Il2CppAssets.Scripts.Database;
@@ -22,7 +22,11 @@ namespace CustomAlbums.Patches
 
             public static void AnimateCoversUpdate()
             {
-                if (CurrentScene is not "UISystem_PC") return;
+                if (CurrentScene is not "UISystem_PC")
+                {
+                    Cells.Clear();
+                    return;
+                }
                 var dbMusicTag = GlobalDataBase.dbMusicTag;
 
                 if (dbMusicTag == null) return;
@@ -31,7 +35,15 @@ namespace CustomAlbums.Patches
                 {
                     var next = node.Next;
                     var cell = node.Value;
-                    var index = cell?.m_VariableBehaviour?.Cast<IVariable>().GetResult<int>() ?? -1;
+
+                    if (cell == null)
+                    {
+                        Cells.Remove(node);
+                        node = next;
+                        continue;
+                    }
+
+                    var index = cell.m_VariableBehaviour?.Cast<IVariable>().GetResult<int>() ?? -1;
 
                     var uid = dbMusicTag?.GetShowStageUidByIndex(index) ?? "?";
                     

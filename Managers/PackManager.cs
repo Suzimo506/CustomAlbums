@@ -1,28 +1,31 @@
 ﻿using CustomAlbums.Data;
 using CustomAlbums.Utilities;
+using System.IO.Compression;
 
 namespace CustomAlbums.Managers
 {
-    internal class PackManager
+    public class PackManager
     {
         private static readonly List<Pack> Packs = new();
-        internal static Pack GetPackFromUid(string uid)
+        public static Pack GetPackFromUid(string uid)
         {
             // If the uid is not custom or parsing the index fails
             if (!uid.StartsWith($"{AlbumManager.Uid}-") || 
                 !uid[4..].TryParseAsInt(out var uidIndex)) return null;
 
             // Retrieve the pack that the uid belongs to
-            var pack = Packs.FirstOrDefault(pack =>
+            var retrievedPack = Packs.FirstOrDefault(pack =>
                 uidIndex >= pack.StartIndex && uidIndex < pack.StartIndex + pack.Length);
 
             // If the pack has no albums in it return null, otherwise return pack (will be null if it doesn't exist)
-            return pack?.Length == 0 ? null : pack;
+            return retrievedPack?.Length is 0 ? null : retrievedPack;
         }
 
-        internal static Pack CreatePack(string file)
+        internal static Pack CreatePack(ZipArchiveEntry json, string path)
         {
-            return Json.Deserialize<Pack>(File.OpenRead(file));
+            var pack = Json.Deserialize<Pack>(json.Open());
+            pack.Path = path;
+            return pack;
         }
 
         internal static void AddPack(Pack pack)
