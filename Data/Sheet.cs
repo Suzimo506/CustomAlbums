@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Nodes;
+using System.Text.Json.Nodes;
 using CustomAlbums.Utilities;
 using Il2CppAssets.Scripts.Database;
 using Il2CppAssets.Scripts.GameCore;
@@ -21,17 +21,30 @@ namespace CustomAlbums.Data
         public string MapName { get; }
         public int Difficulty { get; }
         public bool TalkFileVersion2 { get; set; }
+        
+        public bool HasFile => ParentAlbum.HasFile($"map{Difficulty}.bms");
         public string Md5
         {
             get
             {
-                using var stream = ParentAlbum.OpenMemoryStream($"map{Difficulty}.bms");
-                return stream.GetHash();
+                if (!HasFile) return "00000000000000000000000000000000";
+                try
+                {
+                    using var stream = ParentAlbum.OpenMemoryStream($"map{Difficulty}.bms");
+                    return stream.GetHash();
+                }
+                catch (System.Exception ex)
+                {
+                    Logger.Warning($"Failed to calculate MD5 for {MapName}: {ex.Message}");
+                    return "00000000000000000000000000000000";
+                }
             }
         }
 
         public StageInfo GetStage()
         {
+            if (!HasFile) return null;
+
             // If opening a FileStream is possible (i.e. reading from a folder) then open it as FileStream
             // Otherwise open it as a MemoryStream
             // This allows writing to the map BMS file while it is being read

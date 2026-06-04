@@ -259,11 +259,13 @@ namespace CustomAlbums.Data
         }
         private void GetSheets()
         {
-            // Adds to the Sheets dictionary
-            foreach (var difficulty in Info.Difficulties.Keys.Where(difficulty => HasFile($"map{difficulty}.bms")))
+            // Always populate all 5 difficulties so Headquarters doesn't throw KeyNotFoundException
+            for (var difficulty = 1; difficulty <= 5; difficulty++)
+            {
                 Sheets.Add(difficulty, new Sheet(this, difficulty));
+            }
         }
 
-        public bool HasDifficulty(int difficulty) => Sheets.ContainsKey(difficulty);
+        public bool HasDifficulty(int difficulty) => Sheets.TryGetValue(difficulty, out var sheet) && sheet.HasFile;
     }
 }
