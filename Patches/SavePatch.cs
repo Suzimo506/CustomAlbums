@@ -200,12 +200,6 @@ namespace CustomAlbums.Patches
                     OriginalNoNetText = noNetComp.text;
                     FirstRun = false;
                 }
-                // Check first run case when on a custom and HQ is not present
-                if (uid.StartsWith($"{AlbumManager.Uid}-") && _hqPresent == null && !HQPresent)
-                {
-                    Logger.Warning("Headquarters is not installed! Custom chart leaderboards will not function.");
-                }
-
                 // Vanilla chart or HQ present
                 if (!uid.StartsWith($"{AlbumManager.Uid}-") || HQPresent)
                 {
@@ -218,6 +212,73 @@ namespace CustomAlbums.Patches
                 __instance.noNet.SetActive(true);
                 return false;
             }
+
+            private static System.Exception Finalizer(System.Exception __exception, PnlRank __instance)
+            {
+                if (__exception != null)
+                {
+                    Logger.Error($"[PnlRank.UIRefresh] EXCEPTION THROWN: {__exception.Message}\n{__exception.StackTrace}");
+                    if (__instance != null && __instance.noNet != null)
+                    {
+                        var noNetComp = __instance.noNet.GetComponent<UnityEngine.UI.Text>();
+                        if (noNetComp != null)
+                        {
+                            noNetComp.text = $"CRASH: {__exception.Message}\nCheck MelonLoader console for details.";
+                        }
+                        __instance.noNet.SetActive(true);
+                        if (__instance.server != null) __instance.server.SetActive(false);
+                    }
+                }
+                return null;
+            }
+        }
+
+
+        ///     Corrects the difficulty parameter for hot-reloaded custom charts. The game passes the star difficulty (e.g., 9)
+        ///     instead of the difficulty index (1=Easy, 2=Hard, 3=Master) for hot-reloaded charts, causing HQ's
+        ///     Sheets[difficulty] to throw KeyNotFoundException → AccessViolationException and crash the game.
+        ///     Correct difficulty to selectedDiffTglIndex via ref to allow normal processing by HQ.
+
+        [HarmonyPatch(typeof(GameAccountSystem), nameof(GameAccountSystem.GetRanks))]
+        internal static class SafeGetRanksPatch
+        {
+            [HarmonyPriority(Priority.First)]
+            private static bool Prefix(string musicUid, ref int difficulty)
+            {
+                if (!musicUid.StartsWith($"{AlbumManager.Uid}-")) return true;
+
+                try
+                {
+                    var album = AlbumManager.GetByUid(musicUid);
+                    if (album == null)
+                    {
+                        Logger.Warning($"GetRanks: album does not exist (uid={musicUid}), skipping");
+                        return false;
+                    }
+
+                    // difficulty is in Sheets -> valid, pass directly
+                    if (album.Sheets.ContainsKey(difficulty)) return true;
+
+                    // difficulty is not in Sheets -> replace with the currently selected difficulty toggle index
+                    var corrected = GlobalDataBase.s_DbMusicTag.selectedDiffTglIndex;
+                    Logger.Warning($"GetRanks: difficulty {difficulty} → {corrected} (uid={musicUid})");
+                    difficulty = corrected;
+
+                    // Double check the corrected value
+                    if (!album.Sheets.ContainsKey(difficulty))
+                    {
+                        Logger.Warning($"GetRanks: still invalid after correction diff={difficulty}, skipping");
+                        return false;
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    Logger.Error($"GetRanks validation exception: {ex.Message}");
+                    return false;
+                }
+
+                return true;
+            }
         }
 
         //
@@ -227,7 +288,6 @@ namespace CustomAlbums.Patches
         // TODO: Find a way to inject hidden and favorite charts without using vanilla save -- below are workarounds for quick release.
         private static void CleanCustomData()
         {
-
             DataHelper.hides.RemoveAll((Il2CppSystem.Predicate<string>)(uid => uid.StartsWith($"{AlbumManager.Uid}-")));
             DataHelper.history.RemoveAll(
                 (Il2CppSystem.Predicate<string>)(uid => uid.StartsWith($"{AlbumManager.Uid}-")));
@@ -552,7 +612,7 @@ namespace CustomAlbums.Patches
         [HarmonyPatch(typeof(GameAccountSystem), nameof(GameAccountSystem.RefreshDatas))]
         internal class RefreshDatasPatch
         {
-            private static void Prefix()
+            private static void Postfix()
             {
                 Backup.InitBackups();
                 SaveSaveFile();

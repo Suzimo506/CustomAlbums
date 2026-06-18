@@ -16,16 +16,14 @@ namespace CustomAlbums.Managers
     {
         public const int AsyncReadSpeed = 4096;
 
-        private static Coroutine _currentCoroutine;
         private static readonly Dictionary<string, Coroutine> Coroutines = new();
         private static readonly Logger Logger = new(nameof(AudioManager));
 
         public static bool SwitchLoad(string name)
         {
-            if (!Coroutines.TryGetValue(name, out var routine)) return false;
-            _currentCoroutine = routine;
+            if (!Coroutines.ContainsKey(name)) return false;
 
-            Logger.Msg($"Switching to async load of {name}");
+            Logger.Msg($"Async load already in progress for {name}");
             return true;
         }
 
@@ -50,14 +48,10 @@ namespace CustomAlbums.Managers
                 if (audioClip == null)
                 {
                     Coroutines.Remove(name);
-                    if (_currentCoroutine == coroutine) _currentCoroutine = null;
 
                     Logger.Msg($"Aborting async load of {name}.mp3");
                     return true;
                 }
-
-                // Pause coroutine if it is not active
-                if (coroutine != _currentCoroutine) return false;
 
                 var sampleArray = new float[Math.Min(AsyncReadSpeed, remainingSamples)];
                 var readCount = mp3.ReadSamples(sampleArray, 0, sampleArray.Length);
@@ -73,14 +67,12 @@ namespace CustomAlbums.Managers
                 stream.Dispose();
 
                 Coroutines.Remove(name);
-                _currentCoroutine = null;
 
                 Logger.Msg($"Finished async load of {name}.mp3");
                 return true;
             });
 
             Coroutines[name] = coroutine;
-            _currentCoroutine = coroutine;
 
             return audioClip;
         }
@@ -102,14 +94,10 @@ namespace CustomAlbums.Managers
                 if (audioClip == null)
                 {
                     Coroutines.Remove(name);
-                    if (_currentCoroutine == coroutine) _currentCoroutine = null;
 
                     Logger.Msg($"Aborting async load of {name}.ogg");
                     return true;
                 }
-
-                // Pause coroutine if it is not active
-                if (coroutine != _currentCoroutine) return false;
 
                 var sampleArray = new float[Math.Min(AsyncReadSpeed, remainingSamples)];
                 var readCount = ogg.Read(sampleArray, 0, sampleArray.Length);
@@ -130,7 +118,6 @@ namespace CustomAlbums.Managers
                     stream.Dispose();
 
                     Coroutines.Remove(name);
-                    _currentCoroutine = null;
                     return true;
                 }
 
@@ -143,14 +130,12 @@ namespace CustomAlbums.Managers
                 stream.Dispose();
 
                 Coroutines.Remove(name);
-                _currentCoroutine = null;
 
                 Logger.Msg($"Finished async load of {name}.ogg");
                 return true;
             });
 
             Coroutines[name] = coroutine;
-            _currentCoroutine = coroutine;
 
             return audioClip;
         }

@@ -22,6 +22,74 @@ namespace CustomAlbums.Patches
             MusicTagPatch.HasUpdate = true;
         }
 
+        internal static void RegisterHiddenChartsDirectly()
+        {
+            var specialSongMgr = Singleton<SpecialSongManager>.instance;
+            if (specialSongMgr == null) return;
+
+            Il2CppSystem.Collections.Generic.List<string> newHiddenUids = new();
+
+            foreach (var (key, album) in AlbumManager.LoadedAlbums)
+            {
+                if (!album.HasDifficulty(4) && !album.HasDifficulty(5)) continue;
+
+                var albumUid = album.Uid;
+
+                if (album.HasDifficulty(5) && !DBMusicTagDefine.s_BarrageModeSongUid.Contains(albumUid))
+                {
+                    var oldArr = DBMusicTagDefine.s_BarrageModeSongUid;
+                    var newArr = new Il2CppStringArray(oldArr.Length + 1);
+                    for (var i = 0; i < oldArr.Length; i++) newArr[i] = oldArr[i];
+                    newArr[^1] = albumUid;
+                    DBMusicTagDefine.s_BarrageModeSongUid = newArr;
+                }
+
+                if (!album.HasDifficulty(4)) continue;
+                if (!LoadedHiddens.Add(albumUid)) continue;
+                newHiddenUids.Add(albumUid);
+
+                if (!specialSongMgr.m_HideBmsInfos.ContainsKey(albumUid))
+                {
+                    var triggerDiff = album.Info.HideBmsDifficulty == "0"
+                        ? album.HasDifficulty(3) ? 3 : 2
+                        : album.Info.HideBmsDifficulty.ParseAsInt();
+
+                    specialSongMgr.m_HideBmsInfos.Add(albumUid,
+                        new SpecialSongManager.HideBmsInfo(
+                            albumUid,
+                            triggerDiff,
+                            4,
+                            $"{key}_map4",
+                            new Func<bool>(() => specialSongMgr.IsInvokeHideBms(albumUid))
+                        ));
+
+                    var hideMusicInfo = new HideMusicInfo
+                    {
+                        musicUid = albumUid,
+                        invokeType = album.Info.HideBmsMode switch
+                        {
+                            "CLICK" => (int)HiddenInvokeType.Click,
+                            "PRESS" => (int)HiddenInvokeType.LongPress,
+                            "TOGGLE" => (int)HiddenInvokeType.Toggle,
+                            _ => (int)HiddenInvokeType.None
+                        }
+                    };
+                    specialSongMgr.m_ConfigHideMusic.m_HideMusicObjectMapping[albumUid] = hideMusicInfo;
+                }
+            }
+
+            if (newHiddenUids.Count <= 0) return;
+
+            var oldHidden = DBMusicTagDefine.s_HiddenLocal;
+            var newHidden = new Il2CppStringArray(oldHidden.Length + newHiddenUids.Count);
+            for (var i = 0; i < oldHidden.Length; i++) newHidden[i] = oldHidden[i];
+            for (var i = 0; i < newHiddenUids.Count; i++) newHidden[i + oldHidden.Length] = newHiddenUids[i];
+            DBMusicTagDefine.s_HiddenLocal = newHidden;
+
+            var tagInfo = GlobalDataBase.dbMusicTag.GetAlbumTagInfo(32776);
+            tagInfo?.AddTagUids(newHiddenUids);
+        }
+
         [HarmonyPatch(typeof(SpecialSongManager), nameof(SpecialSongManager.InitHideBmsInfoDic))]
         internal static class HideBmsInfoDicPatch
         {
