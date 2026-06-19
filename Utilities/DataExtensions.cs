@@ -12,6 +12,7 @@ namespace CustomAlbums.Utilities
         /// <returns>The uid or an empty string if not found.</returns>
         public static string GetUid(this IData data)
         {
+            if (data?.fields == null || !data.fields.ContainsKey("uid")) return string.Empty;
             var uidField = data.fields["uid"];
             return uidField == null ? string.Empty : uidField.GetResult<string>();
         }
@@ -29,6 +30,8 @@ namespace CustomAlbums.Utilities
             var fullUid = $"{uid}_{difficulty}";
 
             // For loop doesn't work here
+            if (dataList == null) return -1;
+
             foreach (var data in dataList)
             {
                 if (data.GetUid() == fullUid)
@@ -53,6 +56,8 @@ namespace CustomAlbums.Utilities
         {
             var fullUid = $"{uid}_{difficulty}";
 
+            if (dataList == null) return null;
+
             foreach (var data in dataList)
             {
                 if (data.GetUid() == fullUid)
@@ -66,6 +71,8 @@ namespace CustomAlbums.Utilities
 
         public static ChartSave ToChartSave(this IData data)
         {
+            if (data?.fields == null) return null;
+
             return new ChartSave
             {
                 Evaluate = data.fields["evaluate"].GetResult<int>(),

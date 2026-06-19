@@ -7,6 +7,7 @@ namespace CustomAlbums.Utilities
     {
         public static Il2CppSystem.Collections.Generic.List<T> ToIl2Cpp<T>(this List<T> list)
         {
+            list ??= new List<T>();
             var il2Cpp = new Il2CppSystem.Collections.Generic.List<T>(list.Count);
             foreach (var item in list) il2Cpp.Add(item);
 
@@ -15,6 +16,7 @@ namespace CustomAlbums.Utilities
 
         public static Il2CppSystem.Collections.Generic.List<T> ToIl2Cpp<T>(this IEnumerable<T> list)
         {
+            list ??= Enumerable.Empty<T>();
             var array = list.ToArray();
             var il2Cpp = new Il2CppSystem.Collections.Generic.List<T>(array.Length);
             foreach (var item in array) il2Cpp.Add(item);
@@ -24,6 +26,8 @@ namespace CustomAlbums.Utilities
 
         public static Il2CppSystem.Collections.Generic.List<T> ToIl2Cpp<T>(this ReadOnlyCollection<T> collection)
         {
+            if (collection == null) return new Il2CppSystem.Collections.Generic.List<T>();
+
             var il2Cpp = new Il2CppSystem.Collections.Generic.List<T>(collection.Count);
             foreach (var item in collection) il2Cpp.Add(item);
 
@@ -33,6 +37,7 @@ namespace CustomAlbums.Utilities
         public static Il2CppSystem.Collections.Generic.Dictionary<TKey, TValue> ToIl2Cpp<TKey, TValue>(
             this Dictionary<TKey, TValue> dictionary)
         {
+            dictionary ??= new Dictionary<TKey, TValue>();
             var il2Cpp = new Il2CppSystem.Collections.Generic.Dictionary<TKey, TValue>(dictionary.Count);
             foreach (var (key, value) in dictionary) il2Cpp.Add(key, value);
 
@@ -41,6 +46,8 @@ namespace CustomAlbums.Utilities
 
         public static List<T> ToManaged<T>(this Il2CppSystem.Collections.Generic.List<T> list)
         {
+            if (list == null) return new List<T>();
+
             var managed = new List<T>(list.Count);
             foreach (var item in list) managed.Add(item);
 
@@ -50,6 +57,8 @@ namespace CustomAlbums.Utilities
         public static Dictionary<TKey, T> ToManaged<TKey, T>(
             this Il2CppSystem.Collections.Generic.Dictionary<TKey, T> dictionary)
         {
+            if (dictionary == null) return new Dictionary<TKey, T>();
+
             var managed = new Dictionary<TKey, T>(dictionary.Count);
             foreach (var entry in dictionary) managed.Add(entry.Key, entry.Value);
 
@@ -59,6 +68,8 @@ namespace CustomAlbums.Utilities
         public static void AddManagedRange<T>(this Il2CppSystem.Collections.Generic.List<T> il2cpp,
             IEnumerable<T> managed)
         {
+            if (il2cpp == null) return;
+            managed ??= Enumerable.Empty<T>();
             var array = managed.ToArray();
             il2cpp.Capacity += array.Length;
             foreach (var item in array) il2cpp.Add(item);
@@ -75,6 +86,7 @@ namespace CustomAlbums.Utilities
 
         public static unsafe Il2CppStructArray<T> CopyFromManaged<T>(this T[] arr, long? size = null) where T : unmanaged
         {
+            arr ??= Array.Empty<T>();
             var len = arr.Length;
             if (size is not null && size < 0) 
                 throw new ArgumentOutOfRangeException(nameof(size), "The size to copy cannot be negative.");
@@ -84,6 +96,7 @@ namespace CustomAlbums.Utilities
                 throw new ArgumentOutOfRangeException(nameof(size), "The size to copy is larger than the array length.");
 
             var il2CppArray = new Il2CppStructArray<T>(len);
+            if (lenCopy == 0) return il2CppArray;
 
             fixed (void* managedArrayBase = &arr[0])
             {

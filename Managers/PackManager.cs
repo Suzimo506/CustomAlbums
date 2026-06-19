@@ -7,10 +7,15 @@ namespace CustomAlbums.Managers
     public class PackManager
     {
         private static readonly List<Pack> Packs = new();
+        internal static void Clear()
+        {
+            Packs.Clear();
+        }
+
         public static Pack GetPackFromUid(string uid)
         {
             // If the uid is not custom or parsing the index fails
-            if (!uid.StartsWith($"{AlbumManager.Uid}-") || 
+            if (string.IsNullOrEmpty(uid) || !uid.StartsWith($"{AlbumManager.Uid}-") ||
                 !uid[4..].TryParseAsInt(out var uidIndex)) return null;
 
             // Retrieve the pack that the uid belongs to
@@ -23,13 +28,17 @@ namespace CustomAlbums.Managers
 
         internal static Pack CreatePack(ZipArchiveEntry json, string path)
         {
+            if (json == null) return new Pack { Path = path, Title = System.IO.Path.GetFileNameWithoutExtension(path) };
+
             var pack = Json.Deserialize<Pack>(json.Open());
+            if (pack == null) pack = new Pack();
             pack.Path = path;
             return pack;
         }
 
         internal static void AddPack(Pack pack)
         {
+            if (pack == null) return;
             Packs.Add(pack);
         }
     }

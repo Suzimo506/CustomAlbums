@@ -327,8 +327,20 @@ namespace CustomAlbums.Patches
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
         private static IntPtr LoadFromNamePatch(IntPtr instance, IntPtr assetNamePtr, IntPtr nativeMethodInfo)
         {
-            // Retrieve the pointer of the asset and the name of the asset
             var assetPtr = Hook.Trampoline(instance, assetNamePtr, nativeMethodInfo);
+            try
+            {
+                return LoadFromNamePatchSafe(assetPtr, assetNamePtr);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"LoadFromNamePatch failed: {ex}");
+                return assetPtr;
+            }
+        }
+
+        private static IntPtr LoadFromNamePatchSafe(IntPtr assetPtr, IntPtr assetNamePtr)
+        {
             var assetName = IL2CPP.Il2CppStringToManaged(assetNamePtr) ?? string.Empty;
 
             Logger.Msg($"Loading {assetName}!");

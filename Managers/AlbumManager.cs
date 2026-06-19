@@ -45,7 +45,7 @@ namespace CustomAlbums.Managers
                 var zipFiles = ZipFile.OpenRead(directory);
 
                 // Filter for .mdm files and find the pack.json file
-                var mdms = zipFiles.Entries.Where(file => file.Name.EndsWith(".mdm"));
+                var mdms = zipFiles.Entries.Where(file => file.Name.EndsWith(".mdm")).ToList();
                 var json = zipFiles.Entries.FirstOrDefault(file => file.Name.EndsWith(".json"));
 
                 // Initialize pack and variables
@@ -102,7 +102,7 @@ namespace CustomAlbums.Managers
                 pack.StartIndex = MaxCount;
 
                 // Scan and load all albums
-                var mdms = System.IO.Directory.GetFiles(directory, "*.mdm");
+                var mdms = SafeEnumerateFiles(directory, "*.mdm");
                 pack.Length = mdms.Count(mdmPath =>
                 {
                     var album = LoadOne(mdmPath);
@@ -167,7 +167,17 @@ namespace CustomAlbums.Managers
 
         public static Album LoadOne(string path)
         {
-            var isDirectory = File.GetAttributes(path).HasFlag(FileAttributes.Directory);
+            bool isDirectory;
+            try
+            {
+                isDirectory = File.GetAttributes(path).HasFlag(FileAttributes.Directory);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Failed to read attributes at {path}. Reason: {ex.Message}");
+                return null;
+            }
+
             var fileName = isDirectory ? Path.GetFileName(path) : Path.GetFileNameWithoutExtension(path);
             
             if (LoadedAlbums.ContainsKey($"album_{fileName}")) return null;
@@ -204,14 +214,15 @@ namespace CustomAlbums.Managers
         public static void LoadAlbums()
         {
             LoadedAlbums.Clear();
+            PackManager.Clear();
             MaxCount = 0;
             
             var packs = new List<string>();
             var files = new List<string>();
-            files.AddRange(Directory.GetFiles(SearchPath, SearchPattern));
+            files.AddRange(SafeEnumerateFiles(SearchPath, SearchPattern));
             
             // Scan folder packs and regular album directories
-            foreach (var dir in Directory.GetDirectories(SearchPath))
+            foreach (var dir in SafeEnumerateDirectories(SearchPath))
             {
                 if (System.IO.File.Exists(System.IO.Path.Combine(dir, "pack.json")))
                 {
@@ -222,7 +233,7 @@ namespace CustomAlbums.Managers
                     files.Add(dir);
                 }
             }
-            packs.AddRange(Directory.GetFiles(SearchPath, PackSearchPattern));
+            packs.AddRange(SafeEnumerateFiles(SearchPath, PackSearchPattern));
 
             foreach (var pack in packs)
             {
@@ -238,6 +249,34 @@ namespace CustomAlbums.Managers
             foreach (var file in files) LoadOne(file);
 
             Logger.Msg($"Finished loading {LoadedAlbums.Count} albums.", false);
+        }
+
+        private static IEnumerable<string> SafeEnumerateFiles(string path, string pattern)
+        {
+            try
+            {
+                if (!Directory.Exists(path)) return Enumerable.Empty<string>();
+                return Directory.GetFiles(path, pattern);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Failed to enumerate files at {path}. Reason: {ex.Message}");
+                return Enumerable.Empty<string>();
+            }
+        }
+
+        private static IEnumerable<string> SafeEnumerateDirectories(string path)
+        {
+            try
+            {
+                if (!Directory.Exists(path)) return Enumerable.Empty<string>();
+                return Directory.GetDirectories(path);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Failed to enumerate directories at {path}. Reason: {ex.Message}");
+                return Enumerable.Empty<string>();
+            }
         }
 
         public static IEnumerable<string> GetAllUid()

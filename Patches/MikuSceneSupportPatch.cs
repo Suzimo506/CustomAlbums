@@ -15,6 +15,8 @@ namespace CustomAlbums.Patches
         {
             private static void Finalizer(string sceneFestivalName, ref string __result)
             {
+                if (string.IsNullOrEmpty(sceneFestivalName) || sceneFestivalName.Length <= 6) return;
+
                 var subStr = sceneFestivalName[6..];
                 
                 if (subStr.Length <= 2 || !subStr.TryParseAsInt(out var sceneIndex)) return;

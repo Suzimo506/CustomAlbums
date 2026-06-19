@@ -23,15 +23,17 @@ internal class WebApiPatch
             switch (url)
             {
                 case "statistics/pc-play-statistics-feedback":
-                    if (datas["music_uid"].ToString().StartsWith($"{AlbumManager.Uid}"))
+                    if (datas != null &&
+                        datas.TryGetValue("music_uid", out var musicUidObj) &&
+                        musicUidObj?.ToString()?.StartsWith($"{AlbumManager.Uid}") == true)
                     {
-                        Logger.Msg("Blocked play feedback upload: " + datas["music_uid"].ToString());
+                        Logger.Msg("Blocked play feedback upload: " + musicUidObj);
                         return false;
                     }
 
                     break;
                 case "musedash/v2/pcleaderboard/high-score":
-                    if (GlobalDataBase.dbBattleStage.musicUid.StartsWith($"{AlbumManager.Uid}"))
+                    if (GlobalDataBase.dbBattleStage?.musicUid?.StartsWith($"{AlbumManager.Uid}") == true)
                     {
                         Logger.Msg("Blocked high score upload v2: " + GlobalDataBase.dbBattleStage.musicUid);
                         return false;
@@ -39,7 +41,7 @@ internal class WebApiPatch
 
                     break;
                 case "musedash/v3/pcleaderboard/high-score":
-                    if (GlobalDataBase.dbBattleStage.musicUid.StartsWith($"{AlbumManager.Uid}"))
+                    if (GlobalDataBase.dbBattleStage?.musicUid?.StartsWith($"{AlbumManager.Uid}") == true)
                     {
                         Logger.Msg("Blocked high score upload v3: " + GlobalDataBase.dbBattleStage.musicUid);
                         return false;

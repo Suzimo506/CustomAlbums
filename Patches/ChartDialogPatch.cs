@@ -39,12 +39,19 @@ namespace CustomAlbums.Patches
                 PlayDialogAnimPatch.Index = 0;
                 PlayDialogAnimPatch.CurrentLanguage = DataHelper.userLanguage;
 
-                if (PlayDialogAnimPatch.CurrentStageInfo.dialogEvents == null) return;
+                PlayDialogAnimPatch.DialogEvents = null;
+                if (PlayDialogAnimPatch.CurrentStageInfo?.dialogEvents == null) return;
+
                 // Set this here to avoid repeatedly checking a dictionary
-                PlayDialogAnimPatch.DialogEvents =
-                    PlayDialogAnimPatch.CurrentStageInfo.dialogEvents.ContainsKey(PlayDialogAnimPatch.CurrentLanguage)
-                        ? PlayDialogAnimPatch.CurrentStageInfo.dialogEvents[PlayDialogAnimPatch.CurrentLanguage]
-                        : PlayDialogAnimPatch.CurrentStageInfo.dialogEvents["English"];
+                var dialogEvents = PlayDialogAnimPatch.CurrentStageInfo.dialogEvents;
+                if (!dialogEvents.TryGetValue(PlayDialogAnimPatch.CurrentLanguage, out var currentLanguageEvents) &&
+                    !dialogEvents.TryGetValue("English", out currentLanguageEvents))
+                {
+                    Logger.Warning("Talk file has no current language or English fallback.");
+                    return;
+                }
+
+                PlayDialogAnimPatch.DialogEvents = currentLanguageEvents;
             }
         }
 
@@ -66,6 +73,8 @@ namespace CustomAlbums.Patches
             private static void Prefix(DialogSubControl __instance)
             {
                 if (!HasVersion2 || DialogEvents == null) return;
+                if (Index < 0 || Index >= DialogEvents.Count) return;
+                if (__instance?.m_BgImg == null) return;
 
                 __instance.m_BgImg.color = DialogEvents[Index++].bgColor;
             }

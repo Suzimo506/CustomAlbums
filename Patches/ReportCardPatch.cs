@@ -17,10 +17,11 @@ namespace CustomAlbums.Patches
         private static bool Prefix(PnlReportCard __instance)
         {
             var musicInfo = GlobalDataBase.s_DbMusicTag.CurMusicInfo();
-            if (musicInfo.albumIndex != 999) return true;
+            if (musicInfo == null || musicInfo.albumIndex != 999) return true;
+            if (__instance == null) return false;
 
             var mapDifficulty = GlobalDataBase.s_DbBattleStage.m_MapDifficulty;
-            var curMusicBestRankOrder = Singleton<TempRankDataManager>.instance.GetCurMusicBestRankOrder();
+            var curMusicBestRankOrder = Singleton<TempRankDataManager>.instance?.GetCurMusicBestRankOrder() ?? 0;
 
             var album = AlbumManager.GetByUid(musicInfo.uid);
             if (album == null) return false;
@@ -46,7 +47,7 @@ namespace CustomAlbums.Patches
         private static void Postfix(PnlPreparation __instance)
         {
             var musicInfo = GlobalDataBase.s_DbMusicTag.CurMusicInfo();
-            if (musicInfo.albumIndex != 999) return;
+            if (musicInfo == null || musicInfo.albumIndex != 999 || __instance?.btnDownloadReport == null) return;
 
             var mapDifficulty = GlobalDataBase.s_DbBattleStage.m_MapDifficulty;
             var gameObject = __instance.btnDownloadReport.gameObject;

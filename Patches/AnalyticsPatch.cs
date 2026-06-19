@@ -40,7 +40,8 @@ namespace CustomAlbums.Patches
 
             private static bool Prefix()
             {
-                var runCond = !BattleHelper.MusicInfo().uid.StartsWith($"{AlbumManager.Uid}-");
+                var uid = BattleHelper.MusicInfo()?.uid;
+                var runCond = string.IsNullOrEmpty(uid) || !uid.StartsWith($"{AlbumManager.Uid}-");
                 if (!runCond) Logger.Msg("Blocked sending analytics of custom chart.");
                 return runCond;
             }
@@ -55,7 +56,7 @@ namespace CustomAlbums.Patches
         {
             private static bool Prefix(string dataStatisticsEventDefinesName, MusicInfo musicInfo)
             {
-                var runCond = !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-");
+                var runCond = string.IsNullOrEmpty(musicInfo?.uid) || !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-");
                 if (!runCond) Logger.Msg("Blocked thinking data post of custom chart.");
                 return runCond;
             }
@@ -70,7 +71,7 @@ namespace CustomAlbums.Patches
         {
             private static bool Prefix(string dataStatisticsEventDefinesNameMusicInfo, MusicInfo musicInfo)
             {
-                var runCond = !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-");
+                var runCond = string.IsNullOrEmpty(musicInfo?.uid) || !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-");
                 if (!runCond) Logger.Msg("Blocked sending favorite chart analytics of custom chart.");
                 return runCond;
             }
@@ -85,7 +86,7 @@ namespace CustomAlbums.Patches
         {
             private static bool Prefix(Vector2Int diffValue, string chooseMusicType, string searchName, MusicInfo musicInfo)
             {
-                var runCond = !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-");
+                var runCond = string.IsNullOrEmpty(musicInfo?.uid) || !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-");
                 if (!runCond) Logger.Msg("Blocked sending chosen music from search analytics of custom chart.");
                 return runCond;
             }
@@ -100,7 +101,7 @@ namespace CustomAlbums.Patches
 
             private static bool Prefix(MusicInfo musicInfo)
             {
-                var runCond = !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-");
+                var runCond = string.IsNullOrEmpty(musicInfo?.uid) || !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-");
                 if (!runCond) Logger.Msg("Blocking custom album from being added to search analytics.");
                 return runCond;
             }    

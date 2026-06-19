@@ -44,6 +44,9 @@ namespace CustomAlbums.Managers
         internal static readonly Dictionary<int, Sprite> CachedCovers = new();
         internal static readonly Dictionary<int, AnimatedCover> CachedAnimatedCovers = new();
         private static readonly Logger Logger = new(nameof(CoverManager));
+        private const int MaxGifFrames = 96;
+        private const int MaxGifDimension = 1024;
+        private const long MaxGifTotalPixels = 64L * 1024L * 1024L;
 
         private static readonly Configuration Config = Configuration.Default;
 
@@ -71,18 +74,15 @@ namespace CustomAlbums.Managers
         }
 
         private static readonly System.Collections.Concurrent.ConcurrentQueue<Album> GifQueue = new();
-        private static bool _isProcessingQueue = false;
+        private static int _isProcessingQueue;
 
         // Enqueue charts that need GIF loading to the serial queue
         public static void EnqueueGifToLoad(Album album)
         {
-            if (!album.HasGif) return;
+            if (album == null || !album.HasGif) return;
             GifQueue.Enqueue(album);
-            if (!_isProcessingQueue)
-            {
-                _isProcessingQueue = true;
+            if (Interlocked.Exchange(ref _isProcessingQueue, 1) == 0)
                 Task.Run(ProcessGifQueue);
-            }
         }
 
         // Background single-thread loop to process GIF decoding in the queue
@@ -97,7 +97,9 @@ namespace CustomAlbums.Managers
             }
             finally
             {
-                _isProcessingQueue = false;
+                Interlocked.Exchange(ref _isProcessingQueue, 0);
+                if (!GifQueue.IsEmpty && Interlocked.Exchange(ref _isProcessingQueue, 1) == 0)
+                    _ = Task.Run(ProcessGifQueue);
             }
         }
 
@@ -113,6 +115,9 @@ namespace CustomAlbums.Managers
                 if (stream is null) return;
 
                 using var gif = await Image.LoadAsync<Rgba32>(new DecoderOptions { Configuration = Config }, stream);
+                if (!IsGifWithinBudget(album, gif))
+                    return;
+
                 gif.Mutate(c => c.Flip(FlipMode.Vertical));
 
                 var rawFrames = new RawFrame[gif.Frames.Count];
@@ -135,6 +140,36 @@ namespace CustomAlbums.Managers
                 // Catch exceptions to prevent crashing
                 Logger.Warning($"Failed to load animated cover for {album.AlbumName}. Reason: {ex.Message}");
             }
+        }
+
+        private static bool IsGifWithinBudget(Album album, Image<Rgba32> gif)
+        {
+            var frameCount = gif.Frames.Count;
+            if (frameCount <= 0) return false;
+            if (frameCount > MaxGifFrames)
+            {
+                Logger.Warning($"Skipping animated cover for {album.AlbumName}: too many frames ({frameCount}).");
+                return false;
+            }
+
+            long totalPixels = 0;
+            foreach (var frame in gif.Frames)
+            {
+                if (frame.Width > MaxGifDimension || frame.Height > MaxGifDimension)
+                {
+                    Logger.Warning($"Skipping animated cover for {album.AlbumName}: frame too large ({frame.Width}x{frame.Height}).");
+                    return false;
+                }
+
+                totalPixels += (long)frame.Width * frame.Height;
+                if (totalPixels > MaxGifTotalPixels)
+                {
+                    Logger.Warning($"Skipping animated cover for {album.AlbumName}: total pixel budget exceeded.");
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         public static AnimatedCover GetAnimatedCover(this Album album)

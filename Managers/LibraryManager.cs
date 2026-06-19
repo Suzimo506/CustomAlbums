@@ -36,7 +36,7 @@ namespace CustomAlbums.Managers
 
             Albums.Clear();
 
-            foreach (var path in Directory.GetFiles(LibraryPath, AlbumManager.SearchPattern, SearchOption.AllDirectories))
+            foreach (var path in SafeEnumerateLibraryFiles())
             {
                 var relativePath = NormalizeRelativePath(Path.GetRelativePath(LibraryPath, path));
                 var fileInfo = new FileInfo(path);
@@ -268,6 +268,20 @@ namespace CustomAlbums.Managers
         {
             return !string.IsNullOrEmpty(text) &&
                    text.Contains(value, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static IEnumerable<string> SafeEnumerateLibraryFiles()
+        {
+            try
+            {
+                if (!Directory.Exists(LibraryPath)) return Enumerable.Empty<string>();
+                return Directory.GetFiles(LibraryPath, AlbumManager.SearchPattern, SearchOption.AllDirectories);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Failed to enumerate library albums: {ex.Message}");
+                return Enumerable.Empty<string>();
+            }
         }
     }
 }

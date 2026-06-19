@@ -23,7 +23,7 @@ namespace CustomAlbums.Patches
             var uid = musicInfo?.uid;
             var specialSongInstance = Singleton<SpecialSongManager>.instance;
 
-            if (string.IsNullOrEmpty(uid)) return;
+            if (string.IsNullOrEmpty(uid) || __instance == null) return;
 
             // For custom charts, we need to set the S logos for each difficulty
             if (uid.StartsWith($"{AlbumManager.Uid}-"))
@@ -36,7 +36,7 @@ namespace CustomAlbums.Patches
                 // Get the Evaluate value from each, set diff3 to diff4 if hidden is invoked
                 var diff1 = GetEvaluate(customHighest, 1);
                 var diff2 = GetEvaluate(customHighest, 2);
-                var diff3 = Singleton<SpecialSongManager>.instance.IsInvokeHideBms(uid)
+                var diff3 = specialSongInstance != null && specialSongInstance.IsInvokeHideBms(uid)
                     ? GetEvaluate(customHighest, 4)
                     : GetEvaluate(customHighest, 3);
 
@@ -47,12 +47,12 @@ namespace CustomAlbums.Patches
             }
 
             // For vanilla and custom charts, this fixes the hidden difficulty icon for non-master charts
-            if (!specialSongInstance.IsInvokeHideBms(uid)) return;
-            if (!specialSongInstance.m_HideBmsInfos.TryGetValue(uid, out var info)) return;
+            if (specialSongInstance == null || !specialSongInstance.IsInvokeHideBms(uid)) return;
+            if (specialSongInstance.m_HideBmsInfos == null || !specialSongInstance.m_HideBmsInfos.TryGetValue(uid, out var info)) return;
 
             // Get the difficulty evaluates
-            var hiddenEval = DataHelper.highest.GetIDataByUid(uid, 4).ToChartSave().Evaluate;
-            var masterEval = DataHelper.highest.GetIDataByUid(uid, 3).ToChartSave().Evaluate;
+            var hiddenEval = DataHelper.highest.GetIDataByUid(uid, 4)?.ToChartSave()?.Evaluate ?? -1;
+            var masterEval = DataHelper.highest.GetIDataByUid(uid, 3)?.ToChartSave()?.Evaluate ?? -1;
 
             // The game handles case 3 already, don't need to reinvent the wheel here
             switch (info.triggerDiff)

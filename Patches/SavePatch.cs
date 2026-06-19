@@ -245,7 +245,7 @@ namespace CustomAlbums.Patches
             [HarmonyPriority(Priority.First)]
             private static bool Prefix(string musicUid, ref int difficulty)
             {
-                if (!musicUid.StartsWith($"{AlbumManager.Uid}-")) return true;
+                if (string.IsNullOrEmpty(musicUid) || !musicUid.StartsWith($"{AlbumManager.Uid}-")) return true;
 
                 try
                 {
@@ -311,7 +311,8 @@ namespace CustomAlbums.Patches
             if (DataHelper.selectedAlbumTagIndex == AlbumManager.Uid)
                 DataHelper.selectedAlbumTagIndex = 0;
 
-            if (!DataHelper.selectedMusicUidFromInfoList.StartsWith($"{AlbumManager.Uid}-")) return;
+            if (string.IsNullOrEmpty(DataHelper.selectedMusicUidFromInfoList) ||
+                !DataHelper.selectedMusicUidFromInfoList.StartsWith($"{AlbumManager.Uid}-")) return;
             
             if (ModSettings.SavingEnabled) SaveData.SelectedAlbum = AlbumManager.GetAlbumNameFromUid(DataHelper.selectedMusicUidFromInfoList);
             DataHelper.selectedMusicUidFromInfoList = "0-0";
@@ -325,7 +326,7 @@ namespace CustomAlbums.Patches
             DataHelper.history.AddManagedRange(SaveData.History.GetAlbumUidsFromNames());
             DataHelper.collections.AddManagedRange(SaveData.Collections.GetAlbumUidsFromNames());
 
-            if (!SaveData.SelectedAlbum.StartsWith("album_")) return;
+            if (string.IsNullOrEmpty(SaveData.SelectedAlbum) || !SaveData.SelectedAlbum.StartsWith("album_")) return;
             DataHelper.selectedAlbumUid = "music_package_999";
             DataHelper.selectedAlbumTagIndex = 999;
             DataHelper.selectedMusicUidFromInfoList = AlbumManager.LoadedAlbums.TryGetValue(SaveData.SelectedAlbum, out var album) ? album.Uid : "0-0";
@@ -360,7 +361,9 @@ namespace CustomAlbums.Patches
                 var successParse = Formatting.TryParseAsInt(musicInfo.difficulty3, out var diffNum);
                 var abilityConditionOrGimmick = !successParse || ability >= diffNum;
 
-                __result = abilityConditionOrGimmick || SaveData.UnlockedMasters.Contains(AlbumManager.GetAlbumNameFromUid(uid)) || !AlbumManager.GetByUid(musicInfo.uid).IsPackaged;
+                __result = abilityConditionOrGimmick ||
+                           SaveData.UnlockedMasters.Contains(AlbumManager.GetAlbumNameFromUid(uid)) ||
+                           !(AlbumManager.GetByUid(musicInfo.uid)?.IsPackaged ?? true);
                 return false;
             }
         }
@@ -395,7 +398,7 @@ namespace CustomAlbums.Patches
         {
             private static bool Prefix(MusicInfo musicInfo)
             {
-                if (!musicInfo.uid.StartsWith($"{AlbumManager.Uid}-")) return true;
+                if (string.IsNullOrEmpty(musicInfo?.uid) || !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-")) return true;
                 if (!ModSettings.SavingEnabled) return false;
 
                 SaveData.Hides.Add(AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
@@ -408,7 +411,7 @@ namespace CustomAlbums.Patches
         {
             private static bool Prefix(MusicInfo musicInfo)
             {
-                if (!musicInfo.uid.StartsWith($"{AlbumManager.Uid}-")) return true;
+                if (string.IsNullOrEmpty(musicInfo?.uid) || !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-")) return true;
                 if (!ModSettings.SavingEnabled) return false;
 
                 SaveData.Hides.Remove(AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
@@ -421,7 +424,7 @@ namespace CustomAlbums.Patches
         {
             private static bool Prefix(MusicInfo musicInfo)
             {
-                if (!musicInfo.uid.StartsWith($"{AlbumManager.Uid}-")) return true;
+                if (string.IsNullOrEmpty(musicInfo?.uid) || !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-")) return true;
                 if (!ModSettings.SavingEnabled) return false;
 
                 SaveData.Collections.Add(AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
@@ -434,7 +437,7 @@ namespace CustomAlbums.Patches
         {
             private static bool Prefix(MusicInfo musicInfo)
             {
-                if (!musicInfo.uid.StartsWith($"{AlbumManager.Uid}-")) return true;
+                if (string.IsNullOrEmpty(musicInfo?.uid) || !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-")) return true;
                 if (!ModSettings.SavingEnabled) return false;
 
                 SaveData.Collections.Remove(AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
@@ -447,7 +450,7 @@ namespace CustomAlbums.Patches
         {
             private static bool Prefix(string musicUid)
             {
-                if (!musicUid.StartsWith($"{AlbumManager.Uid}-")) return true;
+                if (string.IsNullOrEmpty(musicUid) || !musicUid.StartsWith($"{AlbumManager.Uid}-")) return true;
                 if (!ModSettings.SavingEnabled) return false;
 
                 var albumName = AlbumManager.GetAlbumNameFromUid(musicUid);
@@ -473,7 +476,18 @@ namespace CustomAlbums.Patches
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
         private static IntPtr RecordBattleArgsPatch(IntPtr instance, IntPtr args, IntPtr isSuccess, IntPtr nativeMethodInfo)
         {
-            return !GlobalDataBase.s_DbBattleStage.musicUid.StartsWith($"{AlbumManager.Uid}-") ? Hook.Trampoline(instance, args, isSuccess, nativeMethodInfo) : IntPtr.Zero;
+            try
+            {
+                var musicUid = GlobalDataBase.s_DbBattleStage?.musicUid;
+                return string.IsNullOrEmpty(musicUid) || !musicUid.StartsWith($"{AlbumManager.Uid}-")
+                    ? Hook.Trampoline(instance, args, isSuccess, nativeMethodInfo)
+                    : IntPtr.Zero;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"RecordBattleArgsPatch failed: {ex}");
+                return Hook.Trampoline(instance, args, isSuccess, nativeMethodInfo);
+            }
         }
 
         /// <summary>
@@ -512,7 +526,7 @@ namespace CustomAlbums.Patches
         {
             private static void Postfix(SceneUploadResultData resData)
             {
-                if (!resData.musicUid.StartsWith($"{AlbumManager.Uid}-")) return;
+                if (string.IsNullOrEmpty(resData?.musicUid) || !resData.musicUid.StartsWith($"{AlbumManager.Uid}-")) return;
                 SaveScore(resData.musicUid, resData.musicDifficulty, resData.score, resData.accuracy, resData.combo, resData.evaluate, resData.miss);
             }
         }
@@ -526,7 +540,7 @@ namespace CustomAlbums.Patches
             private static void Postfix(PnlVictory __instance)
             {
                 // Fix for DJMax scrolling text bug
-                if (__instance.m_CurControls.mainPnl.transform.parent.name is "Djmax")
+                if (__instance?.m_CurControls?.mainPnl?.transform?.parent?.name is "Djmax")
                 {
                     var titleMask = __instance.m_CurControls.mainPnl.transform
                         .Find("PnlVictory_3D").Find("SongTittle").Find("ImgSongTittleMask");
@@ -535,9 +549,10 @@ namespace CustomAlbums.Patches
                     if (!titleText.active) titleMask.Find("MaskPos").gameObject.SetActive(true);
                 }
 
-                if (!ModSettings.SavingEnabled || !GlobalDataBase.dbBattleStage.musicUid.StartsWith($"{AlbumManager.Uid}-")) return;
+                var battleMusicUid = GlobalDataBase.dbBattleStage?.musicUid;
+                if (!ModSettings.SavingEnabled || string.IsNullOrEmpty(battleMusicUid) || !battleMusicUid.StartsWith($"{AlbumManager.Uid}-")) return;
 
-                var albumName = AlbumManager.GetAlbumNameFromUid(GlobalDataBase.dbBattleStage.musicUid);
+                var albumName = AlbumManager.GetAlbumNameFromUid(battleMusicUid);
 
                 if (!SaveData.Highest.TryGetValue(albumName, out var highest))
                     return;
@@ -565,7 +580,9 @@ namespace CustomAlbums.Patches
         {
             private static void Postfix()
             {
-                if (ModSettings.SavingEnabled && !DataHelper.selectedMusicUidFromInfoList.StartsWith("album_"))
+                if (ModSettings.SavingEnabled &&
+                    !string.IsNullOrEmpty(DataHelper.selectedMusicUidFromInfoList) &&
+                    !DataHelper.selectedMusicUidFromInfoList.StartsWith("album_"))
                     SaveData.SelectedAlbum = DataHelper.selectedMusicUidFromInfoList;
             }
         }
@@ -582,7 +599,8 @@ namespace CustomAlbums.Patches
             private static void Prefix()
             {
 
-                if (ModSettings.SavingEnabled && DataHelper.selectedMusicUidFromInfoList.StartsWith($"{AlbumManager.Uid}-"))
+                if (ModSettings.SavingEnabled &&
+                    DataHelper.selectedMusicUidFromInfoList?.StartsWith($"{AlbumManager.Uid}-") == true)
                     SaveData.SelectedAlbum =
                         $"{AlbumManager.GetAlbumNameFromUid(DataHelper.selectedMusicUidFromInfoList)}";
 

@@ -21,7 +21,7 @@ namespace CustomAlbums.Patches
             outAlbum = null;
             // If the chart is not custom then leave
             var uid = DataHelper.selectedMusicUid;
-            if (!uid.StartsWith($"{AlbumManager.Uid}-")) return true;
+            if (string.IsNullOrEmpty(uid) || !uid.StartsWith($"{AlbumManager.Uid}-")) return true;
 
             // If the album doesn't exist (?) or if there are no SceneEggs or if it's christmas SceneEgg (not really a SceneEgg) then leave
             var album = AlbumManager.GetByUid(uid);
@@ -39,6 +39,8 @@ namespace CustomAlbums.Patches
         {
             private static void Prefix(Il2CppSystem.Collections.Generic.List<int> sceneEggIdsBuffer)
             {
+                if (sceneEggIdsBuffer == null) return;
+
                 // Return if there are no scene eggs or if the scene eggs have special logic
                 if (IgnoreSceneEggs(out var album, SceneEggs.None, SceneEggs.Christmas, SceneEggs.BadApple)) return;
 
@@ -120,7 +122,8 @@ namespace CustomAlbums.Patches
         {
             private static void Postfix(string uid, ref bool __result)
             {
-                if (uid.StartsWith($"{AlbumManager.Uid}-") && AlbumManager.GetByUid(uid).Info.SceneEgg is SceneEggs.RinLen)
+                var album = string.IsNullOrEmpty(uid) ? null : AlbumManager.GetByUid(uid);
+                if (album?.Info?.SceneEgg is SceneEggs.RinLen)
                 {
                     __result = true;
                 }

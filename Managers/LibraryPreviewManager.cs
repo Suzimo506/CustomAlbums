@@ -9,10 +9,19 @@ namespace CustomAlbums.Managers
     {
         private static readonly CustomAlbums.Utilities.Logger Logger = new(nameof(LibraryPreviewManager));
         private static readonly Dictionary<AudioSource, float> MutedSources = new();
-        private const float PreviewDemoVolume = 0.15f;
+        private const float MaxPreviewDemoVolume = 0.40f;
         private static AudioSource _previewSource;
         private static AudioClip _previewClip;
         private static Sprite _previewCover;
+        private static float _previewDemoVolume = 0.15f;
+
+        public static float PreviewDemoVolume => _previewDemoVolume;
+
+        public static int PreviewDemoVolumePercent => Mathf.RoundToInt(PreviewDemoVolume * 100f);
+
+        public static float PreviewDemoVolumeNormalized => MaxPreviewDemoVolume <= 0f
+            ? 0f
+            : _previewDemoVolume / MaxPreviewDemoVolume;
 
         public static void MuteGameDemo()
         {
@@ -122,6 +131,20 @@ namespace CustomAlbums.Managers
             {
                 UnityEngine.Object.Destroy(_previewSource.gameObject);
                 _previewSource = null;
+            }
+        }
+
+        public static void SetPreviewDemoVolumeNormalized(float value)
+        {
+            _previewDemoVolume = Mathf.Clamp01(value) * MaxPreviewDemoVolume;
+            ApplyPreviewDemoVolume();
+        }
+
+        private static void ApplyPreviewDemoVolume()
+        {
+            if (_previewSource != null)
+            {
+                _previewSource.volume = PreviewDemoVolume;
             }
         }
 

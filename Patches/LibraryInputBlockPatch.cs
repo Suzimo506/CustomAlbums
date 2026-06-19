@@ -1,8 +1,32 @@
+using CustomAlbums.UI;
+using HarmonyLib;
+using UnityEngine;
+
 namespace CustomAlbums.Patches
 {
     internal static class LibraryInputBlockPatch
     {
-        // Disabled: patching UnityEngine.Input in this IL2CPP build can crash GameAssembly.
-        // Keep this type as a placeholder so future input blocking can use a safer approach.
+        internal static bool ShouldBlockKey(KeyCode key)
+        {
+            if (!LibraryWindow.IsSearchInputFocused) return false;
+
+            return key == KeyCode.Space ||
+                   key == KeyCode.Return ||
+                   key == KeyCode.KeypadEnter ||
+                   key == KeyCode.Escape;
+        }
+    }
+
+    [HarmonyPatch(typeof(Input), nameof(Input.GetKeyDown), typeof(KeyCode))]
+    [HarmonyPriority(Priority.First)]
+    internal static class LibraryInputGetKeyDownPatch
+    {
+        private static bool Prefix(KeyCode key, ref bool __result)
+        {
+            if (!LibraryInputBlockPatch.ShouldBlockKey(key)) return true;
+
+            __result = false;
+            return false;
+        }
     }
 }

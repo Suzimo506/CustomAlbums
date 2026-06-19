@@ -43,6 +43,7 @@ namespace CustomAlbums
         {
             base.OnUpdate();
             LibraryEntryButton.CreateOrRefresh();
+            LibraryWindow.Update();
             MusicStageCellPatch.AnimateCoversUpdate();
         }
 

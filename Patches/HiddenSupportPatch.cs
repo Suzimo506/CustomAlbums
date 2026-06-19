@@ -161,28 +161,32 @@ namespace CustomAlbums.Patches
 
             private static bool Prefix(MusicInfo musicInfo, SpecialSongManager __instance)
             {
-                if (!musicInfo.uid.StartsWith($"{AlbumManager.Uid}-") ||
-                    !LoadedHiddens.Contains(musicInfo.uid)) return true;
+                var uid = musicInfo?.uid;
+                if (string.IsNullOrEmpty(uid) || __instance == null ||
+                    !uid.StartsWith($"{AlbumManager.Uid}-") ||
+                    !LoadedHiddens.Contains(uid)) return true;
 
-                var hideBms = __instance.m_HideBmsInfos[musicInfo.uid];
+                if (__instance.m_HideBmsInfos == null || !__instance.m_HideBmsInfos.TryGetValue(uid, out var hideBms) || hideBms == null)
+                    return true;
+
                 __instance.m_IsInvokeHideDic[hideBms.uid] = true;
 
-                if (!hideBms.extraCondition.Invoke()) return false;
+                if (hideBms.extraCondition != null && !hideBms.extraCondition.Invoke()) return false;
 
                 var album = AlbumManager.LoadedAlbums.FirstOrDefault(kv => kv.Value.Index == musicInfo.musicIndex)
                     .Value;
 
                 ActivateHidden(hideBms);
 
-                if (album.Info.HideBmsMessage != null)
+                if (album?.Info?.HideBmsMessage != null)
                 {
                     var pnlTips = PnlTipsManager.instance;
-                    var msgBox = pnlTips.GetMessageBox("PnlSpecialsBmsAsk");
-                    msgBox.Show("TIPS", album.Info.HideBmsMessage);
+                    var msgBox = pnlTips?.GetMessageBox("PnlSpecialsBmsAsk");
+                    msgBox?.Show("TIPS", album.Info.HideBmsMessage);
                 }
 
                 SpecialSongManager.onTriggerHideBmsEvent?.Invoke();
-                if (album.Info.HideBmsMode == "PRESS") Singleton<EventManager>.instance.Invoke("UI/OnSpecialsMusic");
+                if (album?.Info?.HideBmsMode == "PRESS") Singleton<EventManager>.instance?.Invoke("UI/OnSpecialsMusic");
                 return false;
             }
 
