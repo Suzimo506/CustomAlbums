@@ -1,5 +1,6 @@
 using CustomAlbums.Managers;
 using CustomAlbums.Patches;
+using CustomAlbums.UI;
 using CustomAlbums.Utilities;
 using MelonLoader;
 using static CustomAlbums.Patches.AnimatedCoverPatch;
@@ -41,6 +42,7 @@ namespace CustomAlbums
         public override void OnUpdate()
         {
             base.OnUpdate();
+            LibraryEntryButton.CreateOrRefresh();
             MusicStageCellPatch.AnimateCoversUpdate();
         }
 
@@ -62,6 +64,12 @@ namespace CustomAlbums
         public override void OnSceneWasLoaded(int buildIndex, string sceneName)
         {
             base.OnSceneWasLoaded(buildIndex, sceneName);
+            LibraryEntryButton.Reset();
+            LibraryWindow.Close();
+            if (sceneName == "UISystem_PC")
+            {
+                LibraryEntryButton.CreateOrRefresh();
+            }
             MusicStageCellPatch.CurrentScene = sceneName;
         }
     }

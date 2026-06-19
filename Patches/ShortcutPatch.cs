@@ -3,6 +3,7 @@ using Il2CppAssets.Scripts.Database;
 using Il2CppAssets.Scripts.PeroTools.Nice.Components;
 using CustomAlbums.Managers;
 using CustomAlbums.Data;
+using CustomAlbums.UI;
 using UnityEngine;
 
 namespace CustomAlbums.Patches
@@ -11,6 +12,8 @@ namespace CustomAlbums.Patches
     {
         internal static bool HandleScroll(FancyScrollView fsv, float time, bool forward)
         {
+            if (LibraryWindow.IsOpen) return false;
+
             if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
             {
                 var dbMusicTag = GlobalDataBase.dbMusicTag;

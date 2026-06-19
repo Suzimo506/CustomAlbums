@@ -654,7 +654,6 @@ namespace CustomAlbums.Managers
                     if (LastFileEvent.TryGetValue(e.FullPath, out var lastTime) && (now - lastTime).TotalMilliseconds < 500) return;
                     LastFileEvent[e.FullPath] = now;
 
-                    Logger.Msg($"HotReload: Detected new file: {e.Name}", false);
                     Task.Run(() =>
                     {
                         var attempts = 0;
@@ -667,11 +666,6 @@ namespace CustomAlbums.Managers
                         if (attempts < 50)
                         {
                             AlbumsToAdd.Enqueue(e.FullPath);
-                            Logger.Msg($"HotReload: Queued for addition: {e.Name}", false);
-                        }
-                        else
-                        {
-                            Logger.Warning($"HotReload: Timed out waiting for file: {e.Name}");
                         }
                     });
                 };
@@ -682,7 +676,6 @@ namespace CustomAlbums.Managers
                     if (LastFileEvent.TryGetValue(e.FullPath, out var lastTime) && (now - lastTime).TotalMilliseconds < 500) return;
                     LastFileEvent[e.FullPath] = now;
 
-                    Logger.Msg($"HotReload: Detected deletion: {e.Name}", false);
                     AlbumsToDelete.Enqueue(Path.GetFileNameWithoutExtension(e.Name));
                 };
 
@@ -693,7 +686,6 @@ namespace CustomAlbums.Managers
                     if (LastFileEvent.TryGetValue(e.FullPath, out var lastTime) && (now - lastTime).TotalMilliseconds < 500) return;
                     LastFileEvent[e.FullPath] = now;
 
-                    Logger.Msg($"HotReload: Detected change: {e.Name}", false);
                     Task.Run(() =>
                     {
                         var attempts = 0;
@@ -707,11 +699,6 @@ namespace CustomAlbums.Managers
                         {
                             AlbumsToDelete.Enqueue(Path.GetFileNameWithoutExtension(e.Name));
                             AlbumsToAdd.Enqueue(e.FullPath);
-                            Logger.Msg($"HotReload: Queued for reload: {e.Name}", false);
-                        }
-                        else
-                        {
-                            Logger.Warning($"HotReload: Timed out waiting for file: {e.Name}");
                         }
                     });
                 };
@@ -722,42 +709,21 @@ namespace CustomAlbums.Managers
                     if (LastFileEvent.TryGetValue(e.FullPath, out var lastTime) && (now - lastTime).TotalMilliseconds < 500) return;
                     LastFileEvent[e.FullPath] = now;
 
-                    Logger.Msg($"HotReload: Detected rename: {e.OldName} -> {e.Name}", false);
-                    var oldKey = $"album_{Path.GetFileNameWithoutExtension(e.OldName)}";
-                    var newKey = $"album_{Path.GetFileNameWithoutExtension(e.Name)}";
-
-                    if (AlbumManager.LoadedAlbums.Remove(oldKey, out var album))
+                    AlbumsToDelete.Enqueue(Path.GetFileNameWithoutExtension(e.OldName));
+                    Task.Run(() =>
                     {
-                        AlbumManager.LoadedAlbums.TryAdd(newKey, album);
-                        AssetPatch.ModifyCacheKey($"{oldKey}_demo", $"{newKey}_demo");
-                        AssetPatch.ModifyCacheKey($"{oldKey}_music", $"{newKey}_music");
-                        AssetPatch.ModifyCacheKey($"{oldKey}_cover", $"{newKey}_cover");
-                        Logger.Msg($"HotReload: Renamed {oldKey} -> {newKey}", false);
-                    }
-                    else
-                    {
-                        // Old album was not loaded (e.g. didn't match 'test*.mdm'). Treat this rename as a new creation event.
-                        Logger.Msg($"HotReload: Old file was not loaded, treating as new file: {e.Name}", false);
-                        Task.Run(() =>
+                        var attempts = 0;
+                        while (!IsFileUnlocked(e.FullPath) && attempts < 50)
                         {
-                            var attempts = 0;
-                            while (!IsFileUnlocked(e.FullPath) && attempts < 50)
-                            {
-                                Thread.Sleep(200);
-                                attempts++;
-                            }
+                            Thread.Sleep(200);
+                            attempts++;
+                        }
 
-                            if (attempts < 50)
-                            {
-                                AlbumsToAdd.Enqueue(e.FullPath);
-                                Logger.Msg($"HotReload: Queued for addition: {e.Name}", false);
-                            }
-                            else
-                            {
-                                Logger.Warning($"HotReload: Timed out waiting for file: {e.Name}");
-                            }
-                        });
-                    }
+                        if (attempts < 50)
+                        {
+                            AlbumsToAdd.Enqueue(e.FullPath);
+                        }
+                    });
                 };
 
                 AlbumManager.AlbumWatcher.EnableRaisingEvents = true;

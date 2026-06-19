@@ -179,6 +179,11 @@
             <Private>false</Private>
             <HintPath>$(MelonAssemblies)\UnityEngine.UI.dll</HintPath>
         </Reference>
+        <Reference Include="UnityEngine.UIModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
+            <SpecificVersion>false</SpecificVersion>
+            <Private>false</Private>
+            <HintPath>$(MelonAssemblies)\UnityEngine.UIModule.dll</HintPath>
+        </Reference>
         <Reference
             Include="UnityEngine.UnityWebRequestModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
             <SpecificVersion>false</SpecificVersion>
