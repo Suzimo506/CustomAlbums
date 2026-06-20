@@ -34,6 +34,10 @@
         <PackageReference Include="System.Text.RegularExpressions" Version="4.3.1" />
     </ItemGroup>
 
+    <ItemGroup>
+        <EmbeddedResource Include="Assets\*.ogg" LogicalName="CustomAlbums.Assets.%(Filename)%(Extension)" />
+    </ItemGroup>
+
     <Target Name="CopyMod" AfterTargets="Repack" Condition="'$(WORKER)' != 'GitHub'">
         <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(GameFolder)\Mods" />
         <Message Text="Copied assembly to '$(GameFolder)\Mods\$(AssemblyName).dll'" Importance="High" />

@@ -241,7 +241,11 @@ namespace CustomAlbums.UI
 
             CreateDifficultyFilters(panel);
 
-            var close = CreateButton(panel, "CloseButton", "关闭", ColorAccent, Close);
+            var close = CreateButton(panel, "CloseButton", "关闭", ColorAccent, () =>
+            {
+                LibraryUiSoundManager.Play(LibraryUiSound.Cancel);
+                Close();
+            });
             close.anchorMin = new Vector2(1f, 1f);
             close.anchorMax = new Vector2(1f, 1f);
             close.pivot = new Vector2(1f, 1f);
@@ -290,6 +294,8 @@ namespace CustomAlbums.UI
 
             var apply = CreateButton(panel, "DifficultyApply", "筛选", ColorAccent, () =>
             {
+                LibraryUiSoundManager.Play(LibraryUiSound.Yes);
+
                 var minDifficulty = _pendingMinDifficulty;
                 var maxDifficulty = _pendingMaxDifficulty;
                 if (minDifficulty > maxDifficulty)
@@ -704,6 +710,7 @@ namespace CustomAlbums.UI
                 var width = Mathf.Clamp(92f + label.Length * 18f, 116f, 260f);
                 var row = CreateButton(_categoryContent, "Category_" + i, label, selected ? ColorAccent : ColorAccentSoft, () =>
                 {
+                    LibraryUiSoundManager.Play(LibraryUiSound.Click);
                     _selectedCategory = category;
                     RebuildCategories();
                     RebuildList();
@@ -784,6 +791,7 @@ namespace CustomAlbums.UI
             selectButton.navigation = new Navigation { mode = Navigation.Mode.None };
             selectButton.onClick.AddListener((UnityAction)(() =>
             {
+                LibraryUiSoundManager.Play(LibraryUiSound.Click);
                 ClearSelectedObject();
                 SelectEntry(entry, true, false);
             }));
@@ -822,6 +830,7 @@ namespace CustomAlbums.UI
             var action = CreateButton(row, "Action", entry.IsActive ? "移除" : "导入",
                 entry.IsActive ? new Color(0.46f, 0.16f, 0.42f, 0.92f) : ColorAccent, () =>
                 {
+                    LibraryUiSoundManager.Play(entry.IsActive ? LibraryUiSound.Cancel : LibraryUiSound.Yes);
                     SelectEntry(entry, false, false);
                     if (entry.IsActive)
                         LibraryManager.Deactivate(entry);
