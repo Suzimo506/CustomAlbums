@@ -103,11 +103,16 @@ namespace CustomAlbums.Managers
             }
 
             var destinationPath = Path.Combine(AlbumManager.SearchPath, entry.ActiveFileName);
-            if (File.Exists(destinationPath)) return true;
+            if (File.Exists(destinationPath))
+            {
+                SynchronizeSaveAliases(entry);
+                return true;
+            }
 
             try
             {
                 File.Copy(sourcePath, destinationPath, false);
+                SynchronizeSaveAliases(entry);
                 Logger.Msg($"Activated library album: {entry.RelativePath}", false);
                 return true;
             }
@@ -132,6 +137,7 @@ namespace CustomAlbums.Managers
 
             try
             {
+                SynchronizeSaveAliases(entry);
                 File.Delete(activePath);
                 Logger.Msg($"Deactivated library album: {entry.RelativePath}", false);
                 return true;
@@ -257,6 +263,19 @@ namespace CustomAlbums.Managers
             var name = Path.GetFileNameWithoutExtension(relativePath);
             var hash = Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(relativePath.ToLowerInvariant())))[..8];
             return $"{name}_{hash}.mdm";
+        }
+
+        private static void SynchronizeSaveAliases(LibraryAlbumEntry entry)
+        {
+            var activeAlbumName = GetAlbumName(entry.ActiveFileName);
+            var libraryAlbumName = GetAlbumName(entry.FileName);
+            SaveManager.SynchronizeAlbumAliases(activeAlbumName, libraryAlbumName);
+            SaveManager.SaveSaveFile();
+        }
+
+        private static string GetAlbumName(string fileName)
+        {
+            return $"album_{Path.GetFileNameWithoutExtension(fileName)}";
         }
 
         private static string NormalizeRelativePath(string relativePath)

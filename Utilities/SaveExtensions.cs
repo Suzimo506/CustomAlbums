@@ -30,8 +30,8 @@ namespace CustomAlbums.Utilities
             var key = album!.AlbumName;
             return new SaveData
             {
-                Highest = save.Highest.GetValueOrDefault(key),
-                FullCombo = save.FullCombo.GetValueOrDefault(key)
+                Highest = SaveManager.GetHighestForAlbum(key),
+                FullCombo = SaveManager.GetFullComboForAlbum(key)
             };
         }
     }

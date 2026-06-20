@@ -82,7 +82,11 @@ namespace CustomAlbums.UI
                 fadeDuration = 0.08f
             };
             button.onClick = new Button.ButtonClickedEvent();
-            button.onClick.AddListener((UnityAction)new Action(LibraryWindow.Show));
+            button.onClick.AddListener((UnityAction)new Action(() =>
+            {
+                LibraryUiSoundManager.Play(LibraryUiSound.Yes);
+                LibraryWindow.Show();
+            }));
 
             var textObj = new GameObject("TxtLabel");
             var textRect = textObj.AddComponent<RectTransform>();

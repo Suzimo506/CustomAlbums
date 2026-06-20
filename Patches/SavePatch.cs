@@ -329,7 +329,7 @@ namespace CustomAlbums.Patches
             if (string.IsNullOrEmpty(SaveData.SelectedAlbum) || !SaveData.SelectedAlbum.StartsWith("album_")) return;
             DataHelper.selectedAlbumUid = "music_package_999";
             DataHelper.selectedAlbumTagIndex = 999;
-            DataHelper.selectedMusicUidFromInfoList = AlbumManager.LoadedAlbums.TryGetValue(SaveData.SelectedAlbum, out var album) ? album.Uid : "0-0";
+            DataHelper.selectedMusicUidFromInfoList = AlbumManager.LoadedAlbums.TryGetValue(SaveManager.ResolveLoadedAlbumName(SaveData.SelectedAlbum), out var album) ? album.Uid : "0-0";
         }
 
         [HarmonyPatch(typeof(DataHelper), nameof(DataHelper.CheckMusicUnlockMaster), new Type[] { typeof(MusicInfo), typeof(bool) })]
@@ -350,7 +350,7 @@ namespace CustomAlbums.Patches
                     Logger.Msg("Fixing bugged vanilla state for master lock");
                     var vanillaParse = Formatting.TryParseAsInt(musicInfo.difficulty3, out var difficulty);
                     var cond = !vanillaParse || ability >= difficulty;
-                    __result = cond || DataHelper.unlockMasters.Contains(uid) || SaveData.UnlockedMasters.Contains(AlbumManager.GetAlbumNameFromUid(uid)) || (!AlbumManager.GetByUid(musicInfo.uid)?.IsPackaged ?? false);
+                    __result = cond || DataHelper.unlockMasters.Contains(uid) || SaveManager.IsMasterUnlocked(AlbumManager.GetAlbumNameFromUid(uid)) || (!AlbumManager.GetByUid(musicInfo.uid)?.IsPackaged ?? false);
                     return false;
                 }
 
@@ -362,7 +362,7 @@ namespace CustomAlbums.Patches
                 var abilityConditionOrGimmick = !successParse || ability >= diffNum;
 
                 __result = abilityConditionOrGimmick ||
-                           SaveData.UnlockedMasters.Contains(AlbumManager.GetAlbumNameFromUid(uid)) ||
+                           SaveManager.IsMasterUnlocked(AlbumManager.GetAlbumNameFromUid(uid)) ||
                            !(AlbumManager.GetByUid(musicInfo.uid)?.IsPackaged ?? true);
                 return false;
             }
@@ -401,7 +401,7 @@ namespace CustomAlbums.Patches
                 if (string.IsNullOrEmpty(musicInfo?.uid) || !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-")) return true;
                 if (!ModSettings.SavingEnabled) return false;
 
-                SaveData.Hides.Add(AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
+                SaveManager.AddAlbumFlag(SaveData.Hides, AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
                 return true;
             }
         }
@@ -414,7 +414,7 @@ namespace CustomAlbums.Patches
                 if (string.IsNullOrEmpty(musicInfo?.uid) || !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-")) return true;
                 if (!ModSettings.SavingEnabled) return false;
 
-                SaveData.Hides.Remove(AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
+                SaveManager.RemoveAlbumFlag(SaveData.Hides, AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
                 return true;
             }
         }
@@ -427,7 +427,7 @@ namespace CustomAlbums.Patches
                 if (string.IsNullOrEmpty(musicInfo?.uid) || !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-")) return true;
                 if (!ModSettings.SavingEnabled) return false;
 
-                SaveData.Collections.Add(AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
+                SaveManager.AddAlbumFlag(SaveData.Collections, AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
                 return true;
             }
         }
@@ -440,7 +440,7 @@ namespace CustomAlbums.Patches
                 if (string.IsNullOrEmpty(musicInfo?.uid) || !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-")) return true;
                 if (!ModSettings.SavingEnabled) return false;
 
-                SaveData.Collections.Remove(AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
+                SaveManager.RemoveAlbumFlag(SaveData.Collections, AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
                 return true;
             }
         }
@@ -455,12 +455,7 @@ namespace CustomAlbums.Patches
 
                 var albumName = AlbumManager.GetAlbumNameFromUid(musicUid);
 
-                // Remove album from history if it exists
-                SaveData.History.Remove(albumName);
-                SaveData.History.Add(albumName);
-
-                if (SaveData.History.Count > 10)
-                    SaveData.History.RemoveAt(0);
+                SaveManager.AddAlbumHistory(albumName);
 
                 return true;
             }
@@ -554,7 +549,8 @@ namespace CustomAlbums.Patches
 
                 var albumName = AlbumManager.GetAlbumNameFromUid(battleMusicUid);
 
-                if (!SaveData.Highest.TryGetValue(albumName, out var highest))
+                var highest = SaveManager.GetHighestForAlbum(albumName);
+                if (highest == null)
                     return;
 
                 // If the chart has been played then enable the "HI-SCORE" UI element

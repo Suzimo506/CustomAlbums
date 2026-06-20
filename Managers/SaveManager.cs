@@ -13,6 +13,212 @@ namespace CustomAlbums.Managers
         internal static Logger Logger = new(nameof(SaveManager));
         internal static string PreviousScore { get; set; } = "-";
 
+        internal static void SynchronizeAlbumAliases(string albumName, params string[] extraAliases)
+        {
+            if (!ModSettings.SavingEnabled || SaveData == null) return;
+
+            var aliases = GetAlbumNameAliases(albumName)
+                .Concat(extraAliases.SelectMany(GetAlbumNameAliases))
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (aliases.Count <= 1) return;
+
+            MergeHighestForAliases(aliases);
+            MergeFullComboForAliases(aliases);
+            SynchronizeSetAliases(SaveData.UnlockedMasters, aliases);
+            SynchronizeSetAliases(SaveData.Collections, aliases);
+            SynchronizeSetAliases(SaveData.Hides, aliases);
+            SynchronizeHistoryAliases(aliases);
+
+            if (aliases.Any(alias => alias.Equals(SaveData.SelectedAlbum, StringComparison.OrdinalIgnoreCase)))
+                SaveData.SelectedAlbum = ResolveLoadedAlbumName(SaveData.SelectedAlbum);
+        }
+
+        internal static Dictionary<int, ChartSave> GetHighestForAlbum(string albumName)
+        {
+            if (SaveData == null) return null;
+            return MergeHighestForAliases(GetAlbumNameAliases(albumName).ToList());
+        }
+
+        internal static List<int> GetFullComboForAlbum(string albumName)
+        {
+            if (SaveData == null) return null;
+            return MergeFullComboForAliases(GetAlbumNameAliases(albumName).ToList());
+        }
+
+        internal static bool IsMasterUnlocked(string albumName)
+        {
+            return SaveData != null && GetAlbumNameAliases(albumName).Any(alias => SaveData.UnlockedMasters.Contains(alias));
+        }
+
+        internal static void AddAlbumFlag(HashSet<string> set, string albumName)
+        {
+            foreach (var alias in GetAlbumNameAliases(albumName))
+                set.Add(alias);
+        }
+
+        internal static void RemoveAlbumFlag(HashSet<string> set, string albumName)
+        {
+            foreach (var alias in GetAlbumNameAliases(albumName))
+                set.Remove(alias);
+        }
+
+        internal static void AddAlbumHistory(string albumName)
+        {
+            var aliases = GetAlbumNameAliases(albumName).ToList();
+            SaveData.History.RemoveAll(history => aliases.Contains(history, StringComparer.OrdinalIgnoreCase));
+            SaveData.History.Add(albumName);
+
+            if (SaveData.History.Count > 10)
+                SaveData.History.RemoveAt(0);
+        }
+
+        internal static string ResolveLoadedAlbumName(string albumName)
+        {
+            if (string.IsNullOrWhiteSpace(albumName)) return albumName;
+            if (AlbumManager.LoadedAlbums.ContainsKey(albumName)) return albumName;
+
+            var baseAlbumName = GetLibraryBaseAlbumName(albumName);
+            return AlbumManager.LoadedAlbums.Keys.FirstOrDefault(name =>
+                GetLibraryBaseAlbumName(name).Equals(baseAlbumName, StringComparison.OrdinalIgnoreCase)) ?? albumName;
+        }
+
+        private static Dictionary<int, ChartSave> GetOrCreateHighestForAlbum(string albumName)
+        {
+            var aliases = GetAlbumNameAliases(albumName).ToList();
+            var highest = MergeHighestForAliases(aliases) ?? new Dictionary<int, ChartSave>();
+            foreach (var alias in aliases)
+                SaveData.Highest[alias] = highest;
+            return highest;
+        }
+
+        private static List<int> GetOrCreateFullComboForAlbum(string albumName)
+        {
+            var aliases = GetAlbumNameAliases(albumName).ToList();
+            var fullCombo = MergeFullComboForAliases(aliases) ?? new List<int>();
+            foreach (var alias in aliases)
+                SaveData.FullCombo[alias] = fullCombo;
+            return fullCombo;
+        }
+
+        private static IEnumerable<string> GetAlbumNameAliases(string albumName)
+        {
+            if (string.IsNullOrWhiteSpace(albumName)) yield break;
+
+            yield return albumName;
+
+            var baseAlbumName = GetLibraryBaseAlbumName(albumName);
+            if (!baseAlbumName.Equals(albumName, StringComparison.OrdinalIgnoreCase))
+                yield return baseAlbumName;
+        }
+
+        private static string GetLibraryBaseAlbumName(string albumName)
+        {
+            if (string.IsNullOrWhiteSpace(albumName)) return albumName;
+
+            var separator = albumName.LastIndexOf('_');
+            if (separator <= "album_".Length) return albumName;
+
+            var suffix = albumName[(separator + 1)..];
+            return suffix.Length == 8 && suffix.All(IsHexDigit)
+                ? albumName[..separator]
+                : albumName;
+        }
+
+        private static bool IsHexDigit(char value)
+        {
+            return value is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
+        }
+
+        private static Dictionary<int, ChartSave> MergeHighestForAliases(IReadOnlyList<string> aliases)
+        {
+            Dictionary<int, ChartSave> merged = null;
+
+            foreach (var alias in aliases)
+            {
+                if (!SaveData.Highest.TryGetValue(alias, out var highest)) continue;
+
+                if (merged == null)
+                {
+                    merged = highest;
+                    continue;
+                }
+
+                foreach (var (difficulty, save) in highest)
+                {
+                    if (merged.TryGetValue(difficulty, out var existing))
+                        MergeChartSave(existing, save);
+                    else
+                        merged[difficulty] = save;
+                }
+            }
+
+            if (merged == null) return null;
+
+            foreach (var alias in aliases)
+                SaveData.Highest[alias] = merged;
+
+            return merged;
+        }
+
+        private static List<int> MergeFullComboForAliases(IReadOnlyList<string> aliases)
+        {
+            List<int> merged = null;
+
+            foreach (var alias in aliases)
+            {
+                if (!SaveData.FullCombo.TryGetValue(alias, out var fullCombo)) continue;
+
+                if (merged == null)
+                {
+                    merged = fullCombo;
+                    continue;
+                }
+
+                foreach (var difficulty in fullCombo.Where(difficulty => !merged.Contains(difficulty)))
+                    merged.Add(difficulty);
+            }
+
+            if (merged == null) return null;
+
+            foreach (var alias in aliases)
+                SaveData.FullCombo[alias] = merged;
+
+            return merged;
+        }
+
+        private static void SynchronizeSetAliases(HashSet<string> set, IReadOnlyList<string> aliases)
+        {
+            if (!aliases.Any(set.Contains)) return;
+
+            foreach (var alias in aliases)
+                set.Add(alias);
+        }
+
+        private static void SynchronizeHistoryAliases(IReadOnlyList<string> aliases)
+        {
+            var historyIndex = SaveData.History.FindLastIndex(history => aliases.Contains(history, StringComparer.OrdinalIgnoreCase));
+            if (historyIndex < 0) return;
+
+            SaveData.History.RemoveAll(history => aliases.Contains(history, StringComparer.OrdinalIgnoreCase));
+            SaveData.History.Insert(Math.Min(historyIndex, SaveData.History.Count), ResolveLoadedAlbumName(aliases[0]));
+        }
+
+        private static void MergeChartSave(ChartSave target, ChartSave source)
+        {
+            if (target == null || source == null) return;
+
+            target.Passed |= source.Passed;
+            target.Accuracy = Math.Max(target.Accuracy, source.Accuracy);
+            target.Score = Math.Max(target.Score, source.Score);
+            target.Combo = Math.Max(target.Combo, source.Combo);
+            target.Evaluate = Math.Max(target.Evaluate, source.Evaluate);
+            target.Clear = Math.Max(target.Clear, source.Clear);
+            target.FailCount = Math.Max(target.FailCount, source.FailCount);
+            target.AccuracyStr = (target.Accuracy / 100).ToStringInvariant("P2");
+        }
+
         /// <summary>
         ///     Fixes the save file since this version of CAM uses a different naming scheme.
         ///     This allows cross-compatibility between CAM 3 and CAM 4, but not from CAM 4 to CAM 3.
@@ -191,11 +397,7 @@ namespace CustomAlbums.Managers
             };
 
             var albumName = album.AlbumName;
-
-            // Create new album save 
-            SaveData.Highest.TryAdd(albumName, new Dictionary<int, ChartSave>());
-
-            var currChartScore = SaveData.Highest[albumName];
+            var currChartScore = GetOrCreateHighestForAlbum(albumName);
 
             // Create new save data if the difficulty doesn't exist
             currChartScore.TryAdd(musicDifficulty, new ChartSave());
@@ -214,15 +416,15 @@ namespace CustomAlbums.Managers
             newScore.Clear++;
 
             if (musicDifficulty is 2 && AlbumManager.LoadedAlbums[albumName].HasDifficulty(3) && newScore.Evaluate >= 4)
-                SaveData.UnlockedMasters.Add(albumName);
+                AddAlbumFlag(SaveData.UnlockedMasters, albumName);
 
             // If there were no misses then add the chart/difficulty to the FullCombo list
             if (miss != 0) return;
 
-            SaveData.FullCombo.TryAdd(albumName, new List<int>());
+            var fullCombo = GetOrCreateFullComboForAlbum(albumName);
 
-            if (!SaveData.FullCombo[albumName].Contains(musicDifficulty))
-                SaveData.FullCombo[albumName].Add(musicDifficulty);
+            if (!fullCombo.Contains(musicDifficulty))
+                fullCombo.Add(musicDifficulty);
         }
     }
 }

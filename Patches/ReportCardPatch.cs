@@ -26,7 +26,7 @@ namespace CustomAlbums.Patches
             var album = AlbumManager.GetByUid(musicInfo.uid);
             if (album == null) return false;
 
-            var save = SaveManager.SaveData.Highest.GetValueOrDefault(album.AlbumName)?.GetValueOrDefault(mapDifficulty);
+            var save = SaveManager.GetHighestForAlbum(album.AlbumName)?.GetValueOrDefault(mapDifficulty);
             if (save == null) return false;
 
             __instance.RefreshRecord(musicInfo, mapDifficulty, save.Score, save.Combo, save.AccuracyStr, save.Evaluate, save.Clear.ToString(CultureInfo.InvariantCulture), curMusicBestRankOrder);
@@ -59,7 +59,8 @@ namespace CustomAlbums.Patches
                 return;
             }
 
-            if (!SaveManager.SaveData.Highest.TryGetValue(album.AlbumName, out var chart))
+            var chart = SaveManager.GetHighestForAlbum(album.AlbumName);
+            if (chart == null)
             {
                 gameObject.SetActive(false);
                 return;

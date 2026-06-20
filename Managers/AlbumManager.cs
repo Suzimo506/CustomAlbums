@@ -298,8 +298,11 @@ namespace CustomAlbums.Managers
         }
         public static IEnumerable<string> GetAlbumUidsFromNames(this IEnumerable<string> albumNames)
         {
-            return albumNames.Where(name => LoadedAlbums.ContainsKey(name))
-                .Select(name => $"{Uid}-{LoadedAlbums[name].Index}");
+            return albumNames
+                .Select(SaveManager.ResolveLoadedAlbumName)
+                .Where(name => LoadedAlbums.ContainsKey(name))
+                .Select(name => $"{Uid}-{LoadedAlbums[name].Index}")
+                .Distinct();
         }
 
         /// <summary>
