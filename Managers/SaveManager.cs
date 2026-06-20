@@ -22,6 +22,7 @@ namespace CustomAlbums.Managers
                 .Where(name => !string.IsNullOrWhiteSpace(name))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            aliases = ExpandKnownAliases(aliases);
             if (aliases.Count <= 1) return;
 
             MergeHighestForAliases(aliases);
@@ -35,16 +36,24 @@ namespace CustomAlbums.Managers
                 SaveData.SelectedAlbum = ResolveLoadedAlbumName(SaveData.SelectedAlbum);
         }
 
+        internal static void SynchronizeLoadedAlbumAliases()
+        {
+            if (!ModSettings.SavingEnabled || SaveData == null) return;
+
+            foreach (var album in AlbumManager.LoadedAlbums.Values)
+                SynchronizeAlbumAliases(album.AlbumName);
+        }
+
         internal static Dictionary<int, ChartSave> GetHighestForAlbum(string albumName)
         {
             if (SaveData == null) return null;
-            return MergeHighestForAliases(GetAlbumNameAliases(albumName).ToList());
+            return MergeHighestForAliases(ExpandKnownAliases(GetAlbumNameAliases(albumName).ToList()));
         }
 
         internal static List<int> GetFullComboForAlbum(string albumName)
         {
             if (SaveData == null) return null;
-            return MergeFullComboForAliases(GetAlbumNameAliases(albumName).ToList());
+            return MergeFullComboForAliases(ExpandKnownAliases(GetAlbumNameAliases(albumName).ToList()));
         }
 
         internal static bool IsMasterUnlocked(string albumName)
@@ -60,14 +69,14 @@ namespace CustomAlbums.Managers
 
         internal static void RemoveAlbumFlag(HashSet<string> set, string albumName)
         {
-            foreach (var alias in GetAlbumNameAliases(albumName))
-                set.Remove(alias);
+            var aliases = ExpandKnownAliases(GetAlbumNameAliases(albumName).ToList());
+            set.RemoveWhere(name => AlbumAliasIntersects(name, aliases));
         }
 
         internal static void AddAlbumHistory(string albumName)
         {
-            var aliases = GetAlbumNameAliases(albumName).ToList();
-            SaveData.History.RemoveAll(history => aliases.Contains(history, StringComparer.OrdinalIgnoreCase));
+            var aliases = ExpandKnownAliases(GetAlbumNameAliases(albumName).ToList());
+            SaveData.History.RemoveAll(history => AlbumAliasIntersects(history, aliases));
             SaveData.History.Add(albumName);
 
             if (SaveData.History.Count > 10)
@@ -79,14 +88,27 @@ namespace CustomAlbums.Managers
             if (string.IsNullOrWhiteSpace(albumName)) return albumName;
             if (AlbumManager.LoadedAlbums.ContainsKey(albumName)) return albumName;
 
-            var baseAlbumName = GetLibraryBaseAlbumName(albumName);
+            var aliases = GetAlbumNameAliases(albumName)
+                .Where(alias => !string.IsNullOrWhiteSpace(alias))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var alias in aliases)
+                if (AlbumManager.LoadedAlbums.ContainsKey(alias)) return alias;
+
+            var baseAlbumName = aliases.Select(GetLibraryBaseAlbumName).FirstOrDefault(name =>
+                !string.IsNullOrWhiteSpace(name) && !name.Equals(albumName, StringComparison.OrdinalIgnoreCase)) ??
+                                GetLibraryBaseAlbumName(albumName);
+
             return AlbumManager.LoadedAlbums.Keys.FirstOrDefault(name =>
+                aliases.Contains(name, StringComparer.OrdinalIgnoreCase) ||
+                aliases.Contains(GetLibraryBaseAlbumName(name), StringComparer.OrdinalIgnoreCase) ||
                 GetLibraryBaseAlbumName(name).Equals(baseAlbumName, StringComparison.OrdinalIgnoreCase)) ?? albumName;
         }
 
         private static Dictionary<int, ChartSave> GetOrCreateHighestForAlbum(string albumName)
         {
-            var aliases = GetAlbumNameAliases(albumName).ToList();
+            var aliases = ExpandKnownAliases(GetAlbumNameAliases(albumName).ToList());
             var highest = MergeHighestForAliases(aliases) ?? new Dictionary<int, ChartSave>();
             foreach (var alias in aliases)
                 SaveData.Highest[alias] = highest;
@@ -95,11 +117,46 @@ namespace CustomAlbums.Managers
 
         private static List<int> GetOrCreateFullComboForAlbum(string albumName)
         {
-            var aliases = GetAlbumNameAliases(albumName).ToList();
+            var aliases = ExpandKnownAliases(GetAlbumNameAliases(albumName).ToList());
             var fullCombo = MergeFullComboForAliases(aliases) ?? new List<int>();
             foreach (var alias in aliases)
                 SaveData.FullCombo[alias] = fullCombo;
             return fullCombo;
+        }
+
+        private static List<string> ExpandKnownAliases(IReadOnlyList<string> aliases)
+        {
+            var expanded = aliases
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (SaveData == null || expanded.Count == 0) return expanded;
+
+            void AddIfRelated(string name)
+            {
+                if (string.IsNullOrWhiteSpace(name)) return;
+                if (!AlbumAliasIntersects(name, expanded)) return;
+                if (!expanded.Contains(name, StringComparer.OrdinalIgnoreCase))
+                    expanded.Add(name);
+            }
+
+            foreach (var name in SaveData.Highest.Keys.ToList()) AddIfRelated(name);
+            foreach (var name in SaveData.FullCombo.Keys.ToList()) AddIfRelated(name);
+            foreach (var name in SaveData.UnlockedMasters.ToList()) AddIfRelated(name);
+            foreach (var name in SaveData.Collections.ToList()) AddIfRelated(name);
+            foreach (var name in SaveData.Hides.ToList()) AddIfRelated(name);
+            foreach (var name in SaveData.History.ToList()) AddIfRelated(name);
+            AddIfRelated(SaveData.SelectedAlbum);
+
+            return expanded;
+        }
+
+        private static bool AlbumAliasIntersects(string albumName, IReadOnlyList<string> aliases)
+        {
+            if (string.IsNullOrWhiteSpace(albumName)) return false;
+            return GetAlbumNameAliases(albumName).Any(alias =>
+                aliases.Contains(alias, StringComparer.OrdinalIgnoreCase));
         }
 
         private static IEnumerable<string> GetAlbumNameAliases(string albumName)
@@ -111,19 +168,51 @@ namespace CustomAlbums.Managers
             var baseAlbumName = GetLibraryBaseAlbumName(albumName);
             if (!baseAlbumName.Equals(albumName, StringComparison.OrdinalIgnoreCase))
                 yield return baseAlbumName;
+
+            foreach (var hashAlias in GetLibraryHashAliases(albumName))
+                yield return hashAlias;
         }
 
         private static string GetLibraryBaseAlbumName(string albumName)
         {
             if (string.IsNullOrWhiteSpace(albumName)) return albumName;
 
-            var separator = albumName.LastIndexOf('_');
-            if (separator <= "album_".Length) return albumName;
+            var parts = albumName.Split('_');
+            if (parts.Length < 3 || !parts[0].Equals("album", StringComparison.OrdinalIgnoreCase)) return albumName;
 
-            var suffix = albumName[(separator + 1)..];
-            return suffix.Length == 8 && suffix.All(IsHexDigit)
-                ? albumName[..separator]
-                : albumName;
+            for (var i = parts.Length - 1; i > 1; i--)
+            {
+                if (!IsLibraryHashPart(parts[i])) continue;
+
+                var baseParts = parts.Take(i).ToArray();
+                return string.Join("_", baseParts);
+            }
+
+            return albumName;
+        }
+
+        private static IEnumerable<string> GetLibraryHashAliases(string albumName)
+        {
+            if (string.IsNullOrWhiteSpace(albumName)) yield break;
+            if (!albumName.StartsWith("album_", StringComparison.OrdinalIgnoreCase)) yield break;
+
+            var parts = albumName.Split('_');
+            if (parts.Length < 3) yield break;
+
+            for (var i = parts.Length - 1; i > 1; i--)
+            {
+                if (!IsLibraryHashPart(parts[i])) continue;
+
+                if (i < parts.Length - 1)
+                    yield return string.Join("_", parts.Take(i + 1));
+                yield return string.Join("_", parts.Take(i));
+                yield break;
+            }
+        }
+
+        private static bool IsLibraryHashPart(string value)
+        {
+            return value.Length == 8 && value.All(IsHexDigit);
         }
 
         private static bool IsHexDigit(char value)
@@ -190,7 +279,7 @@ namespace CustomAlbums.Managers
 
         private static void SynchronizeSetAliases(HashSet<string> set, IReadOnlyList<string> aliases)
         {
-            if (!aliases.Any(set.Contains)) return;
+            if (!set.Any(name => AlbumAliasIntersects(name, aliases))) return;
 
             foreach (var alias in aliases)
                 set.Add(alias);
@@ -198,10 +287,10 @@ namespace CustomAlbums.Managers
 
         private static void SynchronizeHistoryAliases(IReadOnlyList<string> aliases)
         {
-            var historyIndex = SaveData.History.FindLastIndex(history => aliases.Contains(history, StringComparer.OrdinalIgnoreCase));
+            var historyIndex = SaveData.History.FindLastIndex(history => AlbumAliasIntersects(history, aliases));
             if (historyIndex < 0) return;
 
-            SaveData.History.RemoveAll(history => aliases.Contains(history, StringComparer.OrdinalIgnoreCase));
+            SaveData.History.RemoveAll(history => AlbumAliasIntersects(history, aliases));
             SaveData.History.Insert(Math.Min(historyIndex, SaveData.History.Count), ResolveLoadedAlbumName(aliases[0]));
         }
 
@@ -333,17 +422,20 @@ namespace CustomAlbums.Managers
                 using var fileStream = File.OpenRead(Path.Join(SaveLocation, "CustomAlbums.json"));
                 SaveData = Json.Deserialize<CustomAlbumsSave>(fileStream);
                 FixSaveFile();
+                SynchronizeLoadedAlbumAliases();
             }
             catch (Exception ex)
             {
                 if (ex is FileNotFoundException)
                 {
                     SaveData = new CustomAlbumsSave();
+                    SynchronizeLoadedAlbumAliases();
                 }
                 else
                 {
                     Logger.Warning("Could not load save file. Attempting to restore backup...");
                     RestoreBackup();
+                    SynchronizeLoadedAlbumAliases();
                 }
             }
         }

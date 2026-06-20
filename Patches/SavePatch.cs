@@ -321,7 +321,9 @@ namespace CustomAlbums.Patches
         private static void InjectCustomData()
         {
             if (!ModSettings.SavingEnabled) return;
+            if (SaveData == null) return;
 
+            SaveManager.SynchronizeLoadedAlbumAliases();
             DataHelper.hides.AddManagedRange(SaveData.Hides.GetAlbumUidsFromNames());
             DataHelper.history.AddManagedRange(SaveData.History.GetAlbumUidsFromNames());
             DataHelper.collections.AddManagedRange(SaveData.Collections.GetAlbumUidsFromNames());
@@ -330,6 +332,16 @@ namespace CustomAlbums.Patches
             DataHelper.selectedAlbumUid = "music_package_999";
             DataHelper.selectedAlbumTagIndex = 999;
             DataHelper.selectedMusicUidFromInfoList = AlbumManager.LoadedAlbums.TryGetValue(SaveManager.ResolveLoadedAlbumName(SaveData.SelectedAlbum), out var album) ? album.Uid : "0-0";
+        }
+
+        internal static void RefreshInjectedCustomData()
+        {
+            if (!ModSettings.SavingEnabled) return;
+
+            SaveManager.SynchronizeLoadedAlbumAliases();
+            SaveManager.SaveSaveFile();
+            CleanCustomData();
+            InjectCustomData();
         }
 
         [HarmonyPatch(typeof(DataHelper), nameof(DataHelper.CheckMusicUnlockMaster), new Type[] { typeof(MusicInfo), typeof(bool) })]
@@ -402,6 +414,7 @@ namespace CustomAlbums.Patches
                 if (!ModSettings.SavingEnabled) return false;
 
                 SaveManager.AddAlbumFlag(SaveData.Hides, AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
+                SaveManager.SaveSaveFile();
                 return true;
             }
         }
@@ -415,6 +428,7 @@ namespace CustomAlbums.Patches
                 if (!ModSettings.SavingEnabled) return false;
 
                 SaveManager.RemoveAlbumFlag(SaveData.Hides, AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
+                SaveManager.SaveSaveFile();
                 return true;
             }
         }
@@ -428,6 +442,7 @@ namespace CustomAlbums.Patches
                 if (!ModSettings.SavingEnabled) return false;
 
                 SaveManager.AddAlbumFlag(SaveData.Collections, AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
+                SaveManager.SaveSaveFile();
                 return true;
             }
         }
@@ -441,6 +456,7 @@ namespace CustomAlbums.Patches
                 if (!ModSettings.SavingEnabled) return false;
 
                 SaveManager.RemoveAlbumFlag(SaveData.Collections, AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
+                SaveManager.SaveSaveFile();
                 return true;
             }
         }
@@ -456,6 +472,7 @@ namespace CustomAlbums.Patches
                 var albumName = AlbumManager.GetAlbumNameFromUid(musicUid);
 
                 SaveManager.AddAlbumHistory(albumName);
+                SaveManager.SaveSaveFile();
 
                 return true;
             }

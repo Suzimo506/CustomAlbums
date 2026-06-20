@@ -20,7 +20,6 @@ namespace CustomAlbums.UI
         private static GameObject _root;
         private static Text _label;
         private static Sprite _roundedSprite;
-        private static Font _font;
         private static float _nextCreateAttemptTime;
 
         public static void CreateOrRefresh()
@@ -149,7 +148,7 @@ namespace CustomAlbums.UI
         private static void ApplyFont(Text text)
         {
             if (text == null) return;
-            text.font = GetFont();
+            NativeFontCache.ApplyTo(text);
         }
 
         private static void RemoveNativeBindings(GameObject target)
@@ -159,21 +158,6 @@ namespace CustomAlbums.UI
 
             var eventTrigger = target.GetComponent<UnityEngine.EventSystems.EventTrigger>();
             if (eventTrigger != null) GameObject.Destroy(eventTrigger);
-        }
-
-        private static Font GetFont()
-        {
-            if (_font != null) return _font;
-
-            foreach (var text in Resources.FindObjectsOfTypeAll<Text>())
-            {
-                if (text == null || text.font == null) continue;
-                _font = text.font;
-                return _font;
-            }
-
-            _font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            return _font;
         }
 
         private static Sprite GetRoundedSprite()

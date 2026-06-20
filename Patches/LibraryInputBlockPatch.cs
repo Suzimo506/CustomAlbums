@@ -23,6 +23,7 @@ namespace CustomAlbums.Patches
     {
         private static bool Prefix(KeyCode key, ref bool __result)
         {
+            if (!Main.IsLobbyScene) return true;
             if (!LibraryInputBlockPatch.ShouldBlockKey(key)) return true;
 
             __result = false;

@@ -222,7 +222,7 @@ namespace CustomAlbums.Managers
             files.AddRange(SafeEnumerateFiles(SearchPath, SearchPattern));
             
             // Scan folder packs and regular album directories
-            foreach (var dir in SafeEnumerateDirectories(SearchPath))
+            foreach (var dir in SafeEnumerateDirectories(SearchPath, SearchOption.AllDirectories))
             {
                 if (System.IO.File.Exists(System.IO.Path.Combine(dir, "pack.json")))
                 {
@@ -265,12 +265,12 @@ namespace CustomAlbums.Managers
             }
         }
 
-        private static IEnumerable<string> SafeEnumerateDirectories(string path)
+        private static IEnumerable<string> SafeEnumerateDirectories(string path, SearchOption searchOption = SearchOption.TopDirectoryOnly)
         {
             try
             {
                 if (!Directory.Exists(path)) return Enumerable.Empty<string>();
-                return Directory.GetDirectories(path);
+                return Directory.GetDirectories(path, "*", searchOption);
             }
             catch (Exception ex)
             {

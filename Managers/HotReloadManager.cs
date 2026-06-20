@@ -107,6 +107,77 @@ namespace CustomAlbums.Managers
             return musicExInfo;
         }
 
+        private static Album LoadAlbumForHotReload(string path)
+        {
+            var packDirectory = GetFolderPackDirectory(path);
+            if (packDirectory == null) return AlbumManager.LoadOne(path);
+
+            var pack = LoadFolderPackMetadata(packDirectory);
+            AlbumManager.CurrentPack = pack.Title;
+            try
+            {
+                var album = AlbumManager.LoadOne(path);
+                if (album == null) return null;
+
+                if (!pack.Albums.Any(item => item.AlbumName == album.AlbumName))
+                    pack.Albums.Add(album);
+                pack.StartIndex = pack.Albums.Min(item => item.Index);
+                pack.Length = pack.Albums.Count;
+                PackManager.AddOrUpdatePack(pack);
+                return album;
+            }
+            finally
+            {
+                AlbumManager.CurrentPack = null;
+            }
+        }
+
+        private static Pack LoadFolderPackMetadata(string directory)
+        {
+            var packJsonPath = Path.Combine(directory, "pack.json");
+            Pack pack = null;
+
+            try
+            {
+                if (File.Exists(packJsonPath))
+                {
+                    using var stream = File.OpenRead(packJsonPath);
+                    pack = Json.Deserialize<Pack>(stream);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"HotReload: Failed to read folder pack metadata at {directory}: {ex.Message}");
+            }
+
+            pack ??= new Pack { Title = Path.GetFileName(directory) };
+            pack.Path = directory;
+            pack.StartIndex = AlbumManager.LoadedAlbums.Values
+                .Where(album => IsAlbumInDirectory(album, directory))
+                .Select(album => album.Index)
+                .DefaultIfEmpty(AlbumManager.LoadedAlbums.Count)
+                .Min();
+            pack.Length = AlbumManager.LoadedAlbums.Values.Count(album => IsAlbumInDirectory(album, directory));
+            pack.Albums = AlbumManager.LoadedAlbums.Values
+                .Where(album => IsAlbumInDirectory(album, directory))
+                .OrderBy(album => album.Index)
+                .ToList();
+            return pack;
+        }
+
+        private static string GetFolderPackDirectory(string path)
+        {
+            var directory = Path.GetDirectoryName(path);
+            if (string.IsNullOrEmpty(directory)) return null;
+            return File.Exists(Path.Combine(directory, "pack.json")) ? directory : null;
+        }
+
+        private static bool IsAlbumInDirectory(Album album, string directory)
+        {
+            return album != null &&
+                   string.Equals(Path.GetDirectoryName(album.Path), directory, StringComparison.OrdinalIgnoreCase);
+        }
+
         /// <summary>
         ///     Hot-add: Injects a new .mdm file into the game's runtime database.
         /// </summary>
@@ -119,7 +190,7 @@ namespace CustomAlbums.Managers
                 try
                 {
                     // 1. Load album into AlbumManager
-                    var album = AlbumManager.LoadOne(path);
+                    var album = LoadAlbumForHotReload(path);
                     if (album == null)
                     {
                         Logger.Warning($"HotReload: Failed to load album from {path}");
@@ -129,6 +200,8 @@ namespace CustomAlbums.Managers
                     var albumName = album.AlbumName;
                     var uid = $"{AlbumManager.Uid}-{album.Index}";
                     var albumInfo = album.Info;
+                    SaveManager.SynchronizeAlbumAliases(albumName);
+                    SaveManager.SaveSaveFile();
                     Logger.Msg($"HotReload: Adding {albumName} (UID: {uid})", false);
 
                     // 2. Transmute: Native DBObject generation via JSON
@@ -365,14 +438,15 @@ namespace CustomAlbums.Managers
         {
             var deletedCount = 0;
 
-            while (AlbumsToDelete.TryDequeue(out var albumFileName))
+            while (AlbumsToDelete.TryDequeue(out var albumPath))
             {
                 try
                 {
-                    var albumKey = $"album_{albumFileName}";
+                    var album = FindLoadedAlbumForPath(albumPath);
+                    var albumKey = album?.AlbumName ?? $"album_{Path.GetFileNameWithoutExtension(albumPath)}";
                     Logger.Msg($"HotReload: Removing {albumKey}", false);
 
-                    if (!AlbumManager.LoadedAlbums.TryGetValue(albumKey, out var album))
+                    if (album == null || !AlbumManager.LoadedAlbums.ContainsKey(albumKey))
                     {
                         Logger.Warning($"HotReload: Album {albumKey} not found");
                         continue;
@@ -448,6 +522,7 @@ namespace CustomAlbums.Managers
 
                     // Clear resource cache
                     AlbumManager.LoadedAlbums.Remove(albumKey);
+                    PackManager.RemoveAlbum(album);
                     CoverManager.CachedAnimatedCovers.Remove(album.Index);
                     CoverManager.CachedCovers.Remove(album.Index);
                     AssetPatch.RemoveFromCache($"{albumKey}_demo");
@@ -465,6 +540,16 @@ namespace CustomAlbums.Managers
             }
 
             return deletedCount;
+        }
+
+        private static Album FindLoadedAlbumForPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return null;
+
+            var fullPath = Path.GetFullPath(path);
+            return AlbumManager.LoadedAlbums.Values.FirstOrDefault(album =>
+                string.Equals(Path.GetFullPath(album.Path), fullPath, StringComparison.OrdinalIgnoreCase)) ??
+                   AlbumManager.LoadedAlbums.GetValueOrDefault($"album_{Path.GetFileNameWithoutExtension(path)}");
         }
 
         /// <summary>
@@ -589,6 +674,7 @@ namespace CustomAlbums.Managers
                 }
 
                 RebuildCustomAlbumsTag();
+                SavePatch.RefreshInjectedCustomData();
                 RefreshUI();
 
                 // Compatibility with HiddenQoL: if one-key toggle is enabled, automatically trigger after hot reload
@@ -647,6 +733,7 @@ namespace CustomAlbums.Managers
 
                 AlbumManager.AlbumWatcher.Path = watchPath;
                 AlbumManager.AlbumWatcher.Filter = AlbumManager.SearchPattern;
+                AlbumManager.AlbumWatcher.IncludeSubdirectories = true;
 
                 AlbumManager.AlbumWatcher.Created += (_, e) =>
                 {
@@ -676,7 +763,7 @@ namespace CustomAlbums.Managers
                     if (LastFileEvent.TryGetValue(e.FullPath, out var lastTime) && (now - lastTime).TotalMilliseconds < 500) return;
                     LastFileEvent[e.FullPath] = now;
 
-                    AlbumsToDelete.Enqueue(Path.GetFileNameWithoutExtension(e.Name));
+                    AlbumsToDelete.Enqueue(e.FullPath);
                 };
 
                 AlbumManager.AlbumWatcher.Changed += (_, e) =>
@@ -697,7 +784,7 @@ namespace CustomAlbums.Managers
 
                         if (attempts < 50)
                         {
-                            AlbumsToDelete.Enqueue(Path.GetFileNameWithoutExtension(e.Name));
+                            AlbumsToDelete.Enqueue(e.FullPath);
                             AlbumsToAdd.Enqueue(e.FullPath);
                         }
                     });
@@ -709,7 +796,7 @@ namespace CustomAlbums.Managers
                     if (LastFileEvent.TryGetValue(e.FullPath, out var lastTime) && (now - lastTime).TotalMilliseconds < 500) return;
                     LastFileEvent[e.FullPath] = now;
 
-                    AlbumsToDelete.Enqueue(Path.GetFileNameWithoutExtension(e.OldName));
+                    AlbumsToDelete.Enqueue(e.OldFullPath);
                     Task.Run(() =>
                     {
                         var attempts = 0;

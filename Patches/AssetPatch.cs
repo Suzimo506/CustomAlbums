@@ -341,6 +341,7 @@ namespace CustomAlbums.Patches
 
         private static IntPtr LoadFromNamePatchSafe(IntPtr assetPtr, IntPtr assetNamePtr)
         {
+            using var perf = PerfTrace.Measure("CustomAlbums.AssetPatch.LoadFromName");
             var assetName = IL2CPP.Il2CppStringToManaged(assetNamePtr) ?? string.Empty;
 
             Logger.Msg($"Loading {assetName}!");

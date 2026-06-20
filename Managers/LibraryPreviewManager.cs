@@ -24,8 +24,11 @@ namespace CustomAlbums.Managers
 
         public static void Update()
         {
-            EnforceGameDemoMute();
-            ApplyPreviewDemoVolume();
+            using (PerfTrace.Measure("CustomAlbums.LibraryPreview.Update"))
+            {
+                EnforceGameDemoMute();
+                ApplyPreviewDemoVolume();
+            }
         }
 
         private static void EnforceGameDemoMute()

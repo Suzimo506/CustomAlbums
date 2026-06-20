@@ -10,12 +10,19 @@ namespace CustomAlbums.Data
         public long FileSize { get; set; }
         public DateTime LastWriteTimeUtc { get; set; }
         public string ActiveFileName { get; set; } = string.Empty;
+        public string LegacyActiveFileName { get; set; } = string.Empty;
         public AlbumInfo Info { get; set; } = new();
         public bool HasPng { get; set; }
         public bool HasGif { get; set; }
 
         [JsonIgnore]
-        public bool IsActive => !string.IsNullOrEmpty(ActiveFileName) &&
-                                File.Exists(Path.Combine(Managers.AlbumManager.SearchPath, ActiveFileName));
+        public bool IsActive => HasActiveFile(ActiveFileName) || HasActiveFile(LegacyActiveFileName);
+
+        private static bool HasActiveFile(string relativePath)
+        {
+            return !string.IsNullOrEmpty(relativePath) &&
+                   File.Exists(Path.Combine(Managers.AlbumManager.SearchPath,
+                       relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        }
     }
 }

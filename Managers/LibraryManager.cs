@@ -14,6 +14,7 @@ namespace CustomAlbums.Managers
         private const int CacheVersion = 1;
         private const string CacheLocation = "UserData";
         private const string CacheFile = "CustomAlbums_LibraryIndex.json";
+        private const string DefaultCategory = "Unsorted";
 
         private static readonly Logger Logger = new(nameof(LibraryManager));
         private static readonly JsonSerializerOptions JsonOptions = new()
@@ -45,6 +46,10 @@ namespace CustomAlbums.Managers
                     cached.FileSize == fileInfo.Length &&
                     cached.LastWriteTimeUtc == fileInfo.LastWriteTimeUtc)
                 {
+                    cached.Category = GetCategory(relativePath);
+                    cached.FileName = Path.GetFileName(relativePath);
+                    cached.ActiveFileName = GetActiveFileName(relativePath);
+                    cached.LegacyActiveFileName = GetLegacyActiveFileName(relativePath);
                     Albums.Add(cached);
                     continue;
                 }
@@ -102,7 +107,8 @@ namespace CustomAlbums.Managers
                 return false;
             }
 
-            var destinationPath = Path.Combine(AlbumManager.SearchPath, entry.ActiveFileName);
+            var destinationPath = GetActiveFullPath(entry.ActiveFileName);
+            var legacyPath = GetActiveFullPath(entry.LegacyActiveFileName);
             if (File.Exists(destinationPath))
             {
                 SynchronizeSaveAliases(entry);
@@ -111,7 +117,11 @@ namespace CustomAlbums.Managers
 
             try
             {
+                EnsureCategoryPack(entry);
+                Directory.CreateDirectory(Path.GetDirectoryName(destinationPath) ?? AlbumManager.SearchPath);
                 File.Copy(sourcePath, destinationPath, false);
+                if (!PathsEqual(destinationPath, legacyPath) && File.Exists(legacyPath))
+                    TryDeleteFile(legacyPath);
                 SynchronizeSaveAliases(entry);
                 Logger.Msg($"Activated library album: {entry.RelativePath}", false);
                 return true;
@@ -132,13 +142,15 @@ namespace CustomAlbums.Managers
         {
             if (entry == null || string.IsNullOrEmpty(entry.ActiveFileName)) return false;
 
-            var activePath = Path.Combine(AlbumManager.SearchPath, entry.ActiveFileName);
-            if (!File.Exists(activePath)) return true;
+            var activePath = GetActiveFullPath(entry.ActiveFileName);
+            var legacyPath = GetActiveFullPath(entry.LegacyActiveFileName);
+            if (!File.Exists(activePath) && !File.Exists(legacyPath)) return true;
 
             try
             {
                 SynchronizeSaveAliases(entry);
-                File.Delete(activePath);
+                TryDeleteFile(activePath);
+                if (!PathsEqual(activePath, legacyPath)) TryDeleteFile(legacyPath);
                 Logger.Msg($"Deactivated library album: {entry.RelativePath}", false);
                 return true;
             }
@@ -185,6 +197,7 @@ namespace CustomAlbums.Managers
                     FileSize = fileInfo.Length,
                     LastWriteTimeUtc = fileInfo.LastWriteTimeUtc,
                     ActiveFileName = GetActiveFileName(relativePath),
+                    LegacyActiveFileName = GetLegacyActiveFileName(relativePath),
                     Info = albumInfo,
                     HasPng = zip.GetEntry("cover.png") != null,
                     HasGif = zip.GetEntry("cover.gif") != null
@@ -254,28 +267,109 @@ namespace CustomAlbums.Managers
         {
             var directory = Path.GetDirectoryName(relativePath.Replace('/', Path.DirectorySeparatorChar));
             return string.IsNullOrWhiteSpace(directory)
-                ? "Unsorted"
+                ? DefaultCategory
                 : directory.Replace(Path.DirectorySeparatorChar, '/');
         }
 
         private static string GetActiveFileName(string relativePath)
+        {
+            var legacyFileName = GetLegacyActiveFileName(relativePath);
+            var category = GetCategory(relativePath);
+            return category == DefaultCategory
+                ? legacyFileName
+                : NormalizeRelativePath(Path.Combine(GetSafeCategoryDirectory(category), legacyFileName));
+        }
+
+        private static string GetLegacyActiveFileName(string relativePath)
         {
             var name = Path.GetFileNameWithoutExtension(relativePath);
             var hash = Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(relativePath.ToLowerInvariant())))[..8];
             return $"{name}_{hash}.mdm";
         }
 
+        private static void EnsureCategoryPack(LibraryAlbumEntry entry)
+        {
+            if (entry == null || entry.Category == DefaultCategory) return;
+
+            var categoryDirectory = Path.Combine(AlbumManager.SearchPath, GetSafeCategoryDirectory(entry.Category));
+            Directory.CreateDirectory(categoryDirectory);
+
+            var packPath = Path.Combine(categoryDirectory, "pack.json");
+            if (File.Exists(packPath)) return;
+
+            var packConfig = new
+            {
+                Title = GetCategoryTitle(entry.Category),
+                TitleColorHex = "#ffffff",
+                LongTextScroll = true
+            };
+            File.WriteAllText(packPath, JsonSerializer.Serialize(packConfig, JsonOptions));
+        }
+
+        private static string GetCategoryTitle(string category)
+        {
+            if (string.IsNullOrWhiteSpace(category)) return DefaultCategory;
+            var normalized = NormalizeRelativePath(category);
+            var index = normalized.LastIndexOf('/');
+            return index >= 0 ? normalized[(index + 1)..] : normalized;
+        }
+
+        private static string GetSafeCategoryDirectory(string category)
+        {
+            var parts = NormalizeRelativePath(category)
+                .Split('/', StringSplitOptions.RemoveEmptyEntries)
+                .Select(GetSafePathPart)
+                .Where(part => !string.IsNullOrWhiteSpace(part));
+
+            return Path.Combine(parts.DefaultIfEmpty(DefaultCategory).ToArray());
+        }
+
+        private static string GetSafePathPart(string value)
+        {
+            var invalidChars = Path.GetInvalidFileNameChars();
+            var builder = new StringBuilder(value.Length);
+
+            foreach (var character in value.Trim())
+                builder.Append(invalidChars.Contains(character) ? '_' : character);
+
+            var result = builder.ToString().TrimEnd('.', ' ');
+            return string.IsNullOrWhiteSpace(result) ? "_" : result;
+        }
+
+        private static string GetActiveFullPath(string relativePath)
+        {
+            return Path.Combine(AlbumManager.SearchPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        private static bool PathsEqual(string left, string right)
+        {
+            return string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static void TryDeleteFile(string path)
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+
         private static void SynchronizeSaveAliases(LibraryAlbumEntry entry)
         {
             var activeAlbumName = GetAlbumName(entry.ActiveFileName);
+            var activePackedAlbumName = GetPackedAlbumName(entry);
             var libraryAlbumName = GetAlbumName(entry.FileName);
-            SaveManager.SynchronizeAlbumAliases(activeAlbumName, libraryAlbumName);
+            var legacyAlbumName = GetAlbumName(entry.LegacyActiveFileName);
+            SaveManager.SynchronizeAlbumAliases(activePackedAlbumName, activeAlbumName, libraryAlbumName, legacyAlbumName);
             SaveManager.SaveSaveFile();
         }
 
         private static string GetAlbumName(string fileName)
         {
             return $"album_{Path.GetFileNameWithoutExtension(fileName)}";
+        }
+
+        private static string GetPackedAlbumName(LibraryAlbumEntry entry)
+        {
+            var albumName = GetAlbumName(entry.ActiveFileName);
+            return entry.Category == DefaultCategory ? albumName : $"{albumName}_{GetCategoryTitle(entry.Category)}";
         }
 
         private static string NormalizeRelativePath(string relativePath)

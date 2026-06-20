@@ -18,6 +18,10 @@ namespace CustomAlbums.Managers
             if (string.IsNullOrEmpty(uid) || !uid.StartsWith($"{AlbumManager.Uid}-") ||
                 !uid[4..].TryParseAsInt(out var uidIndex)) return null;
 
+            var exactPack = Packs.FirstOrDefault(pack =>
+                pack.Albums.Any(album => album.Index == uidIndex));
+            if (exactPack != null) return exactPack;
+
             // Retrieve the pack that the uid belongs to
             var retrievedPack = Packs.FirstOrDefault(pack =>
                 uidIndex >= pack.StartIndex && uidIndex < pack.StartIndex + pack.Length);
@@ -40,6 +44,46 @@ namespace CustomAlbums.Managers
         {
             if (pack == null) return;
             Packs.Add(pack);
+        }
+
+        internal static void AddOrUpdatePack(Pack pack)
+        {
+            if (pack == null) return;
+
+            var existing = Packs.FirstOrDefault(item =>
+                !string.IsNullOrEmpty(item.Path) &&
+                !string.IsNullOrEmpty(pack.Path) &&
+                string.Equals(System.IO.Path.GetFullPath(item.Path), System.IO.Path.GetFullPath(pack.Path),
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (existing == null)
+            {
+                Packs.Add(pack);
+                return;
+            }
+
+            existing.Title = pack.Title;
+            existing.TitleColorHex = pack.TitleColorHex;
+            existing.LongTextScroll = pack.LongTextScroll;
+            existing.StartIndex = pack.StartIndex;
+            existing.Length = pack.Length;
+            existing.Albums = pack.Albums;
+        }
+
+        internal static void RemoveAlbum(Album album)
+        {
+            if (album == null) return;
+
+            foreach (var pack in Packs)
+            {
+                var removed = pack.Albums.RemoveAll(item => item.AlbumName == album.AlbumName);
+                if (removed == 0) continue;
+
+                pack.Length = pack.Albums.Count;
+                if (pack.Albums.Count > 0)
+                    pack.StartIndex = pack.Albums.Min(item => item.Index);
+                return;
+            }
         }
     }
 }

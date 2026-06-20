@@ -18,6 +18,8 @@ namespace CustomAlbums.UI
 
     internal static class LibraryWindow
     {
+        private static readonly Utilities.Logger Logger = new("LibraryWindow");
+
         private const int SortingOrder = 32762;
         private const float PanelWidth = 1460f;
         private const float PanelHeight = 760f;
@@ -65,7 +67,6 @@ namespace CustomAlbums.UI
         private static float _dragStartDifficultyValue;
         private static Vector2 _dragStartPointerPosition;
         private static bool _nativeInputBlocked;
-        private static Font _font;
         private static Sprite _roundedSprite;
 
         public static bool IsOpen => _root != null;
@@ -611,7 +612,8 @@ namespace CustomAlbums.UI
                 var selected = category == _selectedCategory;
                 var label = GetCategoryLabel(category);
                 var width = Mathf.Clamp(92f + label.Length * 18f, 116f, 260f);
-                var row = CreateButton(_categoryContent, "Category_" + i, label, selected ? ColorAccent : ColorAccentSoft, () =>
+                var row = CreateCategoryButton(_categoryContent, "Category_" + i, label,
+                    selected ? ColorAccent : ColorAccentSoft, () =>
                 {
                     LibraryUiSoundManager.Play(LibraryUiSound.Click);
                     _selectedCategory = category;
@@ -939,6 +941,50 @@ namespace CustomAlbums.UI
             };
         }
 
+        private static RectTransform CreateCategoryButton(Transform parent, string name, string label, Color color, Action action)
+        {
+            var rect = CreateImage(parent, name, color, true);
+            var image = rect.GetComponent<Image>();
+            var button = rect.gameObject.AddComponent<Button>();
+            button.targetGraphic = image;
+            button.colors = CreateButtonColors(color);
+            button.navigation = new Navigation { mode = Navigation.Mode.None };
+            button.onClick.AddListener((UnityAction)(() =>
+            {
+                ClearSelectedObject();
+                action?.Invoke();
+            }));
+
+            var viewport = new GameObject("LabelViewport");
+            viewport.transform.SetParent(rect, false);
+            var viewportRect = viewport.AddComponent<RectTransform>();
+            SetStretch(viewportRect, 14f, 0f, -14f, 0f);
+            viewport.AddComponent<RectMask2D>();
+
+            var text = CreateText(viewportRect, "Label", label, 20, TextAnchor.MiddleCenter);
+            text.color = Color.white;
+            text.fontStyle = FontStyle.Bold;
+            text.horizontalOverflow = HorizontalWrapMode.Overflow;
+            text.verticalOverflow = VerticalWrapMode.Overflow;
+            text.rectTransform.anchorMin = Vector2.zero;
+            text.rectTransform.anchorMax = Vector2.one;
+            text.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            text.rectTransform.offsetMin = Vector2.zero;
+            text.rectTransform.offsetMax = Vector2.zero;
+
+            try
+            {
+                var marquee = rect.gameObject.AddComponent<MarqueeText>();
+                marquee.Initialize(viewportRect, text);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning("Category marquee unavailable: " + ex.Message);
+            }
+
+            return rect;
+        }
+
         private static RectTransform CreateButton(Transform parent, string name, string label, Color color, Action action)
         {
             var rect = CreateImage(parent, name, color, true);
@@ -985,7 +1031,7 @@ namespace CustomAlbums.UI
             var obj = new GameObject(name);
             obj.transform.SetParent(parent, false);
             var text = obj.AddComponent<Text>();
-            text.font = GetFont();
+            NativeFontCache.ApplyTo(text);
             text.text = value;
             text.fontSize = fontSize;
             text.alignment = anchor;
@@ -1033,21 +1079,6 @@ namespace CustomAlbums.UI
             {
                 UnityEngine.Object.Destroy(parent.GetChild(i).gameObject);
             }
-        }
-
-        private static Font GetFont()
-        {
-            if (_font != null) return _font;
-
-            foreach (var text in Resources.FindObjectsOfTypeAll<Text>())
-            {
-                if (text == null || text.font == null) continue;
-                _font = text.font;
-                return _font;
-            }
-
-            _font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            return _font;
         }
 
         private static Sprite GetRoundedSprite()
