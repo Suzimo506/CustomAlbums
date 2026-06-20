@@ -50,8 +50,6 @@ namespace CustomAlbums.UI
         private static Text _previewMeta;
         private static Text _previewDetails;
         private static Text _previewStatus;
-        private static Text _volumeLabel;
-        private static Slider _volumeSlider;
         private static RectTransform _minDifficultyWheelRect;
         private static RectTransform _maxDifficultyWheelRect;
         private static Text[] _minDifficultyWheelTexts;
@@ -76,6 +74,7 @@ namespace CustomAlbums.UI
         public static void Update()
         {
             UpdateNativeInputBlock();
+            if (IsOpen) LibraryPreviewManager.Update();
             UpdateDifficultyWheelInput();
         }
 
@@ -94,7 +93,6 @@ namespace CustomAlbums.UI
             CreateCategories(panel);
             CreatePreview(panel);
             CreateList(panel);
-            CreateVolumeControl(panel);
             RebuildCategories();
             RebuildList();
             SelectEntry(null, false, false);
@@ -126,8 +124,6 @@ namespace CustomAlbums.UI
             _previewMeta = null;
             _previewDetails = null;
             _previewStatus = null;
-            _volumeLabel = null;
-            _volumeSlider = null;
             _minDifficultyWheelRect = null;
             _maxDifficultyWheelRect = null;
             _minDifficultyWheelTexts = null;
@@ -563,99 +559,6 @@ namespace CustomAlbums.UI
             var listWidth = PanelWidth - listLeft - 42f;
             var viewport = CreateScrollViewport(panel, "AlbumList", listLeft, 196f, listWidth, 500f, false);
             _listContent = CreateContent(viewport, true);
-        }
-
-        private static void CreateVolumeControl(RectTransform panel)
-        {
-            var root = CreateImage(panel, "PreviewVolume", ColorAccentSoft, true);
-            root.anchorMin = new Vector2(0f, 0f);
-            root.anchorMax = new Vector2(0f, 0f);
-            root.pivot = new Vector2(0f, 0f);
-            root.sizeDelta = new Vector2(270f, 30f);
-            root.anchoredPosition = new Vector2(42f, 22f);
-
-            _volumeLabel = CreateText(root, "Label", GetVolumeLabel(), 15, TextAnchor.MiddleLeft);
-            _volumeLabel.color = Color.white;
-            _volumeLabel.fontStyle = FontStyle.Bold;
-            _volumeLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
-            SetStretch(_volumeLabel.rectTransform, 18f, 0f, -164f, 0f);
-
-            var sliderRoot = new GameObject("Slider");
-            sliderRoot.transform.SetParent(root, false);
-            var sliderRect = sliderRoot.AddComponent<RectTransform>();
-            sliderRect.anchorMin = new Vector2(1f, 0.5f);
-            sliderRect.anchorMax = new Vector2(1f, 0.5f);
-            sliderRect.pivot = new Vector2(1f, 0.5f);
-            sliderRect.sizeDelta = new Vector2(134f, 14f);
-            sliderRect.anchoredPosition = new Vector2(-14f, 0f);
-
-            _volumeSlider = sliderRoot.AddComponent<Slider>();
-            _volumeSlider.minValue = 0f;
-            _volumeSlider.maxValue = 1f;
-            _volumeSlider.wholeNumbers = false;
-            _volumeSlider.direction = Slider.Direction.LeftToRight;
-
-            var background = CreateImage(sliderRect, "Background", new Color(0.07f, 0.025f, 0.16f, 0.62f), true);
-            background.anchorMin = new Vector2(0f, 0.5f);
-            background.anchorMax = new Vector2(1f, 0.5f);
-            background.pivot = new Vector2(0.5f, 0.5f);
-            background.sizeDelta = new Vector2(0f, 4f);
-            background.anchoredPosition = Vector2.zero;
-
-            var fillArea = new GameObject("Fill Area");
-            fillArea.transform.SetParent(sliderRect, false);
-            var fillAreaRect = fillArea.AddComponent<RectTransform>();
-            fillAreaRect.anchorMin = new Vector2(0f, 0f);
-            fillAreaRect.anchorMax = new Vector2(1f, 1f);
-            fillAreaRect.offsetMin = new Vector2(3f, 0f);
-            fillAreaRect.offsetMax = new Vector2(-3f, 0f);
-
-            var fill = CreateImage(fillAreaRect, "Fill", ColorAccent, false);
-            fill.anchorMin = new Vector2(0f, 0.5f);
-            fill.anchorMax = new Vector2(1f, 0.5f);
-            fill.pivot = new Vector2(0f, 0.5f);
-            fill.sizeDelta = new Vector2(0f, 4f);
-            fill.anchoredPosition = Vector2.zero;
-
-            var handleArea = new GameObject("Handle Slide Area");
-            handleArea.transform.SetParent(sliderRect, false);
-            var handleAreaRect = handleArea.AddComponent<RectTransform>();
-            handleAreaRect.anchorMin = new Vector2(0f, 0f);
-            handleAreaRect.anchorMax = new Vector2(1f, 1f);
-            handleAreaRect.offsetMin = new Vector2(5f, 0f);
-            handleAreaRect.offsetMax = new Vector2(-5f, 0f);
-
-            var handle = CreateImage(handleAreaRect, "Handle", Color.white, true);
-            handle.anchorMin = new Vector2(0.5f, 0.5f);
-            handle.anchorMax = new Vector2(0.5f, 0.5f);
-            handle.pivot = new Vector2(0.5f, 0.5f);
-            handle.sizeDelta = new Vector2(10f, 16f);
-            handle.anchoredPosition = Vector2.zero;
-
-            _volumeSlider.targetGraphic = handle.GetComponent<Image>();
-            _volumeSlider.fillRect = fill;
-            _volumeSlider.handleRect = handle;
-            _volumeSlider.value = LibraryPreviewManager.PreviewDemoVolumeNormalized;
-            _volumeSlider.onValueChanged.AddListener((UnityAction<float>)(value =>
-            {
-                LibraryPreviewManager.SetPreviewDemoVolumeNormalized(value);
-                RefreshVolumeControl();
-            }));
-        }
-
-        private static void RefreshVolumeControl()
-        {
-            if (_volumeLabel != null)
-            {
-                _volumeLabel.text = GetVolumeLabel();
-            }
-        }
-
-        private static string GetVolumeLabel()
-        {
-            return LibraryPreviewManager.PreviewDemoVolumePercent <= 0
-                ? "音量  静音"
-                : $"音量  {LibraryPreviewManager.PreviewDemoVolumePercent}%";
         }
 
         private static RectTransform CreateScrollViewport(RectTransform panel, string name, float x, float top, float width, float height, bool horizontal)

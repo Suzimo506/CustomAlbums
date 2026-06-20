@@ -1,6 +1,8 @@
 using System.IO.Compression;
 using CustomAlbums.Data;
 using CustomAlbums.Utilities;
+using Il2CppAssets.Scripts.Database;
+using Il2CppPeroPeroGames.GlobalDefines;
 using UnityEngine;
 
 namespace CustomAlbums.Managers
@@ -9,36 +11,49 @@ namespace CustomAlbums.Managers
     {
         private static readonly CustomAlbums.Utilities.Logger Logger = new(nameof(LibraryPreviewManager));
         private static readonly Dictionary<AudioSource, float> MutedSources = new();
-        private const float MaxPreviewDemoVolume = 0.40f;
+        private const float PreviewDemoVolumeScale = 1f;
         private static AudioSource _previewSource;
         private static AudioClip _previewClip;
         private static Sprite _previewCover;
-        private static float _previewDemoVolume = 0.15f;
-
-        public static float PreviewDemoVolume => _previewDemoVolume;
-
-        public static int PreviewDemoVolumePercent => Mathf.RoundToInt(PreviewDemoVolume * 100f);
-
-        public static float PreviewDemoVolumeNormalized => MaxPreviewDemoVolume <= 0f
-            ? 0f
-            : _previewDemoVolume / MaxPreviewDemoVolume;
 
         public static void MuteGameDemo()
         {
             MutedSources.Clear();
+            EnforceGameDemoMute();
+        }
+
+        public static void Update()
+        {
+            EnforceGameDemoMute();
+            ApplyPreviewDemoVolume();
+        }
+
+        private static void EnforceGameDemoMute()
+        {
             foreach (var source in UnityEngine.Object.FindObjectsOfType<AudioSource>())
             {
-                if (source == null || !source.isPlaying || source.clip == null) continue;
-                MutedSources[source] = source.volume;
+                if (!ShouldMuteSource(source)) continue;
+                if (!MutedSources.ContainsKey(source))
+                    MutedSources[source] = source.volume;
                 source.volume = 0f;
             }
+        }
+
+        private static bool ShouldMuteSource(AudioSource source)
+        {
+            return source != null &&
+                   source != _previewSource &&
+                   !LibraryUiSoundManager.IsSource(source) &&
+                   source.isPlaying &&
+                   source.gameObject.name != "CustomAlbumsLibraryPreviewAudio";
         }
 
         public static void RestoreGameDemo()
         {
             foreach (var (source, volume) in MutedSources)
             {
-                if (source != null) source.volume = volume;
+                if (source != null)
+                    source.volume = volume > 0.001f ? volume : GetGameMusicVolume();
             }
             MutedSources.Clear();
         }
@@ -96,7 +111,7 @@ namespace CustomAlbums.Managers
 
                 EnsureSource();
                 _previewSource.clip = _previewClip;
-                _previewSource.volume = PreviewDemoVolume;
+                ApplyPreviewDemoVolume();
                 _previewSource.loop = true;
                 _previewSource.Play();
             }
@@ -134,17 +149,11 @@ namespace CustomAlbums.Managers
             }
         }
 
-        public static void SetPreviewDemoVolumeNormalized(float value)
-        {
-            _previewDemoVolume = Mathf.Clamp01(value) * MaxPreviewDemoVolume;
-            ApplyPreviewDemoVolume();
-        }
-
         private static void ApplyPreviewDemoVolume()
         {
             if (_previewSource != null)
             {
-                _previewSource.volume = PreviewDemoVolume;
+                _previewSource.volume = PreviewDemoVolumeScale * GetGameMusicVolume();
             }
         }
 
@@ -170,6 +179,19 @@ namespace CustomAlbums.Managers
         private static string GetPath(LibraryAlbumEntry entry)
         {
             return Path.Combine(LibraryManager.LibraryPath, entry.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        private static float GetGameMusicVolume()
+        {
+            try
+            {
+                return Mathf.Clamp01(DataHelper.GetVolume(PeroAudioType.Music));
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Failed to read game music volume: {ex.Message}");
+                return 1f;
+            }
         }
     }
 }

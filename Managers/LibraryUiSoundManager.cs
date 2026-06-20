@@ -1,5 +1,7 @@
 using System.Reflection;
 using CustomAlbums.Utilities;
+using Il2CppAssets.Scripts.Database;
+using Il2CppPeroPeroGames.GlobalDefines;
 using NAudio.Vorbis;
 using UnityEngine;
 using Logger = CustomAlbums.Utilities.Logger;
@@ -15,6 +17,7 @@ namespace CustomAlbums.Managers
 
     internal static class LibraryUiSoundManager
     {
+        private const float DefaultVolumeScale = 2.4f;
         private const float SampleGain = 2.2f;
         private const string ResourcePrefix = "CustomAlbums.Assets.";
 
@@ -23,7 +26,7 @@ namespace CustomAlbums.Managers
         private static readonly Logger Logger = new(nameof(LibraryUiSoundManager));
         private static AudioSource _source;
 
-        public static void Play(LibraryUiSound sound)
+        public static void Play(LibraryUiSound sound, float volumeScale = DefaultVolumeScale)
         {
             var clip = GetClip(sound);
             if (clip == null) return;
@@ -31,7 +34,12 @@ namespace CustomAlbums.Managers
             EnsureSource();
             if (_source == null) return;
 
-            _source.PlayOneShot(clip, 1f);
+            _source.PlayOneShot(clip, volumeScale * GetGameSfxVolume());
+        }
+
+        internal static bool IsSource(AudioSource source)
+        {
+            return source != null && source == _source;
         }
 
         private static AudioClip GetClip(LibraryUiSound sound)
@@ -128,6 +136,19 @@ namespace CustomAlbums.Managers
             _source.loop = false;
             _source.spatialBlend = 0f;
             _source.volume = 1f;
+        }
+
+        private static float GetGameSfxVolume()
+        {
+            try
+            {
+                return Mathf.Clamp01(DataHelper.GetVolume(PeroAudioType.Sfx));
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Failed to read game SFX volume: {ex.Message}");
+                return 1f;
+            }
         }
     }
 }
