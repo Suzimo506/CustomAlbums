@@ -17,7 +17,7 @@ namespace CustomAlbums.Managers
 
     internal static class LibraryUiSoundManager
     {
-        private const float DefaultVolumeScale = 2.4f;
+        private const float DefaultVolumeScale = 3.6f;
         private const float SampleGain = 2.2f;
         private const string ResourcePrefix = "CustomAlbums.Assets.";
 
