@@ -341,12 +341,7 @@ namespace CustomAlbums.Patches
 
         private static IntPtr LoadFromNamePatchSafe(IntPtr assetPtr, IntPtr assetNamePtr)
         {
-            using var perf = PerfTrace.Measure("CustomAlbums.AssetPatch.LoadFromName");
             var assetName = IL2CPP.Il2CppStringToManaged(assetNamePtr) ?? string.Empty;
-
-            Logger.Msg($"Loading {assetName}!");
-
-            OnAssetLoaded?.Invoke(typeof(AssetPatch), new AssetEventArgs(assetName, assetPtr));
 
             if (assetName.StartsWith("ALBUM") && assetName[5..].TryParseAsInt(out var albumNum) &&
                 albumNum != AlbumManager.Uid + 1)
@@ -364,36 +359,51 @@ namespace CustomAlbums.Patches
             // If we're loading music_search_tag we're done loading albums
             if (assetName == "music_search_tag") _doneLoadingAlbumsFlag = true;
 
+            var handledAssetName = GetHandledAssetName(assetName);
+            var isHandledAsset = AssetHandler.ContainsKey(handledAssetName);
+            var hasAssetListeners = OnAssetLoaded != null;
+            if (!isHandledAsset && !hasAssetListeners)
+            {
+                return assetPtr;
+            }
+
+            if (ModSettings.VerboseLogging) Logger.Msg($"Loading {assetName}!");
+
+            if (hasAssetListeners)
+            {
+                OnAssetLoaded?.Invoke(typeof(AssetPatch), new AssetEventArgs(assetName, assetPtr));
+            }
+
             // If the asset exists in the cache then retrieve it
             if (AssetCache.TryGetValue(assetName, out var cachedAsset))
             {
                 if (cachedAsset != null)
                 {
-                    Logger.Msg($"Returning {assetName} from cache");
+                    if (ModSettings.VerboseLogging) Logger.Msg($"Returning {assetName} from cache");
                     AudioManager.SwitchLoad(assetName);
                     return cachedAsset.Pointer;
                 }
 
-                Logger.Msg("Removing null asset from cache");
+                if (ModSettings.VerboseLogging) Logger.Msg("Removing null asset from cache");
                 AssetCache.Remove(assetName);
             }
 
             // Allow original LoadFromName to run with LocalizationSettings
             if (assetName is "LocalizationSettings") return assetPtr;
 
-            var language = SingletonScriptableObject<LocalizationSettings>.instance.GetActiveOption("Language");
-
-            // Programmatically alters the asset name to remove the language if the language exists 
-            var handledAssetName = assetName.StartsWith("albums_") ? "albums_" : assetName;
-            handledAssetName = handledAssetName.StartsWith($"{AlbumManager.JsonName}_")
-                ? $"{AlbumManager.JsonName}_"
-                : handledAssetName;
-            handledAssetName = handledAssetName.StartsWith("album_") ? "album_" : handledAssetName;
-
             // Get the method from the AssetHandler if it exists and run it, otherwise return assetPtr
-            return AssetHandler.TryGetValue(handledAssetName, out var value)
-                ? value(assetName, assetPtr, language)
-                : assetPtr;
+            if (!AssetHandler.TryGetValue(handledAssetName, out var value)) return assetPtr;
+
+            var language = SingletonScriptableObject<LocalizationSettings>.instance.GetActiveOption("Language");
+            return value(assetName, assetPtr, language);
+        }
+
+        private static string GetHandledAssetName(string assetName)
+        {
+            if (assetName.StartsWith("albums_")) return "albums_";
+            if (assetName.StartsWith($"{AlbumManager.JsonName}_")) return $"{AlbumManager.JsonName}_";
+            if (assetName.StartsWith("album_")) return "album_";
+            return assetName;
         }
 
         /// <summary>

@@ -1,4 +1,3 @@
-using CustomAlbums.Utilities;
 using HarmonyLib;
 using Il2CppDYUnityLib;
 
@@ -13,10 +12,7 @@ namespace CustomAlbums.Patches
     {
         private static void Prefix(FixUpdateTimer __instance)
         {
-            using (PerfTrace.Measure("CustomAlbums.LongChartPatch.FixUpdateTimerRun"))
-            {
-                if (__instance.totalTick is >= 24000 and < int.MaxValue) __instance.totalTick = int.MaxValue;
-            }
+            if (__instance.totalTick is >= 24000 and < int.MaxValue) __instance.totalTick = int.MaxValue;
         }
     }
 }

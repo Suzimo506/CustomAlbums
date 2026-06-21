@@ -36,6 +36,7 @@ namespace CustomAlbums.Managers
 
             var remainingSamples = sampleCount;
             var index = 0;
+            var sampleBuffer = new float[AsyncReadSpeed];
 
             if (name.EndsWith("_music") && mp3.SampleRate != 44100)
                 Logger.Warning(
@@ -53,8 +54,10 @@ namespace CustomAlbums.Managers
                     return true;
                 }
 
-                var sampleArray = new float[Math.Min(AsyncReadSpeed, remainingSamples)];
-                var readCount = mp3.ReadSamples(sampleArray, 0, sampleArray.Length);
+                var requestCount = (int)Math.Min(AsyncReadSpeed, remainingSamples);
+                var sampleArray = requestCount == sampleBuffer.Length ? sampleBuffer : new float[requestCount];
+                var readCount = mp3.ReadSamples(sampleArray, 0, requestCount);
+                if (readCount < requestCount) Array.Clear(sampleArray, readCount, requestCount - readCount);
 
                 audioClip.SetData(sampleArray, index / mp3.Channels);
 
@@ -86,6 +89,7 @@ namespace CustomAlbums.Managers
 
             var remainingSamples = sampleCount;
             var index = 0;
+            var sampleBuffer = new float[AsyncReadSpeed];
 
             Coroutine coroutine = null;
             coroutine = CreateCoroutine((Il2CppSystem.Func<bool>)delegate
@@ -99,8 +103,10 @@ namespace CustomAlbums.Managers
                     return true;
                 }
 
-                var sampleArray = new float[Math.Min(AsyncReadSpeed, remainingSamples)];
-                var readCount = ogg.Read(sampleArray, 0, sampleArray.Length);
+                var requestCount = Math.Min(AsyncReadSpeed, remainingSamples);
+                var sampleArray = requestCount == sampleBuffer.Length ? sampleBuffer : new float[requestCount];
+                var readCount = ogg.Read(sampleArray, 0, requestCount);
+                if (readCount < requestCount) Array.Clear(sampleArray, readCount, requestCount - readCount);
 
                 try
                 {

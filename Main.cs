@@ -54,25 +54,15 @@ namespace CustomAlbums
         public override void OnUpdate()
         {
             base.OnUpdate();
-            PerfTrace.BeginFrame();
             if (!IsLobbyScene)
             {
-                using (PerfTrace.Measure("CustomAlbums.Main.NonLobbyUpdate"))
-                {
-                    if (LibraryWindow.IsOpen) LibraryWindow.Close();
-                }
-                PerfTrace.UpdateReport();
+                if (LibraryWindow.IsOpen) LibraryWindow.Close();
                 return;
             }
 
-            using (PerfTrace.Measure("CustomAlbums.Main.OnUpdate"))
-            {
-                LibraryEntryButton.CreateOrRefresh();
-                LibraryWindow.Update();
-                MusicStageCellPatch.AnimateCoversUpdate();
-            }
-
-            PerfTrace.UpdateReport();
+            LibraryEntryButton.CreateOrRefresh();
+            LibraryWindow.Update();
+            MusicStageCellPatch.AnimateCoversUpdate();
         }
 
         /// <summary>
@@ -83,15 +73,12 @@ namespace CustomAlbums
             base.OnFixedUpdate();
             if (!IsLobbyScene) return;
 
-            using (PerfTrace.Measure("CustomAlbums.Main.OnFixedUpdate"))
-            {
-                HotReloadManager.FixedUpdate();
+            HotReloadManager.FixedUpdate();
 
-                // Dispatcher for GIF covers
-                if (CoverManager.GifAlbumDatas.TryDequeue(out var gifData))
-                {
-                    CoverManager.LoadAnimatedCover(gifData);
-                }
+            // Dispatcher for GIF covers
+            if (CoverManager.GifAlbumDatas.TryDequeue(out var gifData))
+            {
+                CoverManager.LoadAnimatedCover(gifData);
             }
         }
 
@@ -99,7 +86,6 @@ namespace CustomAlbums
         {
             base.OnSceneWasLoaded(buildIndex, sceneName);
             CurrentScene = sceneName;
-            PerfTrace.SetGameMain(sceneName == "GameMain");
             LibraryEntryButton.Reset();
             LibraryWindow.Close();
             if (sceneName == "UISystem_PC")
