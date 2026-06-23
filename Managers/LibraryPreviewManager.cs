@@ -1,8 +1,14 @@
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using CustomAlbums.Data;
 using CustomAlbums.Utilities;
 using Il2CppAssets.Scripts.Database;
 using Il2CppPeroPeroGames.GlobalDefines;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
 using UnityEngine;
 
 namespace CustomAlbums.Managers
@@ -12,6 +18,8 @@ namespace CustomAlbums.Managers
         private static readonly CustomAlbums.Utilities.Logger Logger = new(nameof(LibraryPreviewManager));
         private static readonly Dictionary<AudioSource, float> MutedSources = new();
         private const float PreviewDemoVolumeScale = 1f;
+        private const long MaxPreviewGifBytes = 32L * 1024L * 1024L;
+        private const int MaxPreviewGifDimension = 1024;
         private static AudioSource _previewSource;
         private static AudioClip _previewClip;
         private static Sprite _previewCover;
@@ -61,28 +69,105 @@ namespace CustomAlbums.Managers
         public static Sprite LoadCover(LibraryAlbumEntry entry)
         {
             DestroyCover();
-            if (entry == null || !entry.HasPng) return null;
+            if (entry == null || (!entry.HasPng && !entry.HasGif && !entry.HasWebp)) return null;
 
             try
             {
                 using var zip = ZipFile.OpenRead(GetPath(entry));
-                var cover = zip.GetEntry("cover.png");
-                if (cover == null) return null;
+                var pngCover = zip.GetEntry("cover.png");
+                if (pngCover != null) return LoadPngCover(pngCover);
 
-                using var stream = cover.Open().ToMemoryStream();
-                var texture = new Texture2D(2, 2, TextureFormat.ARGB32, false)
-                {
-                    wrapMode = TextureWrapMode.Clamp
-                };
-                texture.LoadImage(stream.ReadFully().CopyFromManaged());
-                _previewCover = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
-                return _previewCover;
+                var webpCover = zip.GetEntry("cover.webp");
+                if (webpCover != null) return LoadWebpCover(webpCover);
+
+                var gifCover = zip.GetEntry("cover.gif");
+                return gifCover == null ? null : LoadGifCover(gifCover);
             }
             catch (Exception ex)
             {
                 Logger.Warning($"Failed to load library cover {entry.RelativePath}: {ex.Message}");
                 return null;
             }
+        }
+
+        private static Sprite LoadPngCover(ZipArchiveEntry cover)
+        {
+            using var stream = cover.Open().ToMemoryStream();
+            var texture = new Texture2D(2, 2, TextureFormat.ARGB32, false)
+            {
+                wrapMode = TextureWrapMode.Clamp
+            };
+            texture.LoadImage(stream.ReadFully().CopyFromManaged());
+            return SetPreviewCover(texture);
+        }
+
+        private static Sprite LoadWebpCover(ZipArchiveEntry cover)
+        {
+            using var stream = cover.Open();
+            using var image = Image.Load<Rgba32>(new DecoderOptions { Configuration = Configuration.Default }, stream);
+            image.Mutate(context => context.Flip(FlipMode.Vertical));
+
+            if (!image.DangerousTryGetSinglePixelMemory(out var memory)) return null;
+
+            var buffer = new byte[memory.Length * Unsafe.SizeOf<Rgba32>()];
+            memory.Span.CopyTo(MemoryMarshal.Cast<byte, Rgba32>(buffer.AsSpan()));
+
+            var texture = new Texture2D(image.Width, image.Height, TextureFormat.RGBA32, false)
+            {
+                wrapMode = TextureWrapMode.Clamp
+            };
+            texture.LoadRawTextureData(buffer.CopyFromManaged());
+            texture.Apply(false, true);
+            return SetPreviewCover(texture);
+        }
+
+        private static Sprite LoadGifCover(ZipArchiveEntry cover)
+        {
+            if (cover.Length > MaxPreviewGifBytes)
+            {
+                Logger.Warning($"Skipping library preview GIF: file is too large ({cover.Length} bytes).");
+                return null;
+            }
+
+            using var stream = cover.Open();
+            var info = Image.Identify(new DecoderOptions { Configuration = Configuration.Default }, stream);
+            if (info == null ||
+                info.Width > MaxPreviewGifDimension ||
+                info.Height > MaxPreviewGifDimension)
+            {
+                Logger.Warning("Skipping library preview GIF: dimensions are too large.");
+                return null;
+            }
+            stream.Position = 0;
+
+            using var gif = Image.Load<Rgba32>(new DecoderOptions { Configuration = Configuration.Default }, stream);
+            if (gif.Frames.Count == 0) return null;
+
+            gif.Mutate(context => context.Flip(FlipMode.Vertical));
+            var frame = gif.Frames.RootFrame;
+            if (frame.Width > MaxPreviewGifDimension || frame.Height > MaxPreviewGifDimension)
+            {
+                Logger.Warning($"Skipping library preview GIF: frame too large ({frame.Width}x{frame.Height}).");
+                return null;
+            }
+            if (!frame.DangerousTryGetSinglePixelMemory(out var memory)) return null;
+
+            var buffer = new byte[memory.Length * Unsafe.SizeOf<Rgba32>()];
+            memory.Span.CopyTo(MemoryMarshal.Cast<byte, Rgba32>(buffer.AsSpan()));
+
+            var texture = new Texture2D(frame.Width, frame.Height, TextureFormat.RGBA32, false)
+            {
+                wrapMode = TextureWrapMode.Clamp
+            };
+            texture.LoadRawTextureData(buffer.CopyFromManaged());
+            texture.Apply(false, true);
+            return SetPreviewCover(texture);
+        }
+
+        private static Sprite SetPreviewCover(Texture2D texture)
+        {
+            _previewCover = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+            return _previewCover;
         }
 
         public static void PlayDemo(LibraryAlbumEntry entry)

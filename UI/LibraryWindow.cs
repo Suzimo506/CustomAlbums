@@ -16,6 +16,13 @@ namespace CustomAlbums.UI
         Max
     }
 
+    internal enum CategoryBatchAction
+    {
+        None,
+        Import,
+        Remove
+    }
+
     internal static class LibraryWindow
     {
         private static readonly Utilities.Logger Logger = new("LibraryWindow");
@@ -27,10 +34,12 @@ namespace CustomAlbums.UI
         private const float RowHeight = 58f;
         private const float DifficultyStep = 1f;
         private const float DefaultMinDifficulty = 6f;
-        private const float DefaultMaxDifficulty = 11f;
+        private const float DefaultMaxDifficulty = 13f;
         private const int RowAuthorMaxLength = 22;
         private const int RowCharterMaxLength = 18;
         private const int RowCategoryMaxLength = 12;
+        private const int CategoryImportBatchSize = 1;
+        private const float CategoryImportBatchInterval = 0.35f;
 
         private static readonly Color ColorPanel = new(0.12f, 0.045f, 0.24f, 0.88f);
         private static readonly Color ColorPanelBorder = new(0.95f, 0.28f, 0.86f, 0.34f);
@@ -45,6 +54,7 @@ namespace CustomAlbums.UI
         private static RectTransform _listContent;
         private static RectTransform _previewPanel;
         private static InputField _searchInput;
+        private static Text _countText;
         private static Image _coverFrameImage;
         private static Image _coverImage;
         private static Text _coverPlaceholder;
@@ -52,6 +62,8 @@ namespace CustomAlbums.UI
         private static Text _previewMeta;
         private static Text _previewDetails;
         private static Text _previewStatus;
+        private static Image _categoryActionImage;
+        private static Text _categoryActionLabel;
         private static RectTransform _minDifficultyWheelRect;
         private static RectTransform _maxDifficultyWheelRect;
         private static Text[] _minDifficultyWheelTexts;
@@ -62,11 +74,21 @@ namespace CustomAlbums.UI
         private static float _pendingMaxDifficulty = DefaultMaxDifficulty;
         private static float _activeMinDifficulty = DefaultMinDifficulty;
         private static float _activeMaxDifficulty = DefaultMaxDifficulty;
+        private static bool _isDifficultyFilterActive;
         private static DifficultyWheelKind _hoveredDifficultyWheel = DifficultyWheelKind.None;
         private static DifficultyWheelKind _draggingDifficultyWheel = DifficultyWheelKind.None;
         private static float _dragStartDifficultyValue;
         private static Vector2 _dragStartPointerPosition;
         private static bool _nativeInputBlocked;
+        private static bool _isIndexRefreshing;
+        private static Task _indexRefreshTask;
+        private static Exception _indexRefreshException;
+        private static List<LibraryAlbumEntry> _categoryImportQueue;
+        private static int _categoryImportTotal;
+        private static int _categoryImportActivated;
+        private static float _nextCategoryImportTime;
+        private static CategoryBatchAction _categoryBatchAction = CategoryBatchAction.None;
+        private static IDisposable _categorySaveScope;
         private static Sprite _roundedSprite;
 
         public static bool IsOpen => _root != null;
@@ -75,6 +97,8 @@ namespace CustomAlbums.UI
         public static void Update()
         {
             UpdateNativeInputBlock();
+            CompleteIndexRefresh();
+            ProcessCategoryImportBatch();
             if (IsOpen) LibraryPreviewManager.Update();
             UpdateDifficultyWheelInput();
         }
@@ -84,7 +108,6 @@ namespace CustomAlbums.UI
             if (_root != null) return;
 
             LibraryPreviewManager.MuteGameDemo();
-            LibraryManager.RefreshIndex();
             ResetDifficultyFilters();
             _root = CreateRoot();
             var panel = CreatePanel(_root.transform);
@@ -94,9 +117,57 @@ namespace CustomAlbums.UI
             CreateCategories(panel);
             CreatePreview(panel);
             CreateList(panel);
+            CreateCategoryActionButton(panel);
+            if (LibraryManager.Entries.Count == 0) LibraryManager.LoadCachedIndex();
+            UpdateCountText();
             RebuildCategories();
             RebuildList();
             SelectEntry(null, false, false);
+            BeginIndexRefresh();
+        }
+
+        private static void BeginIndexRefresh()
+        {
+            if (_indexRefreshTask != null && !_indexRefreshTask.IsCompleted)
+            {
+                _isIndexRefreshing = true;
+                return;
+            }
+
+            _isIndexRefreshing = true;
+            _indexRefreshException = null;
+            RefreshCategoryActionButton();
+
+            _indexRefreshTask = Task.Run(() =>
+            {
+                try
+                {
+                    LibraryManager.RefreshIndex();
+                }
+                catch (Exception ex)
+                {
+                    _indexRefreshException = ex;
+                    Logger.Error("Library index refresh failed: " + ex);
+                }
+            });
+        }
+
+        private static void CompleteIndexRefresh()
+        {
+            if (_indexRefreshTask == null || !_indexRefreshTask.IsCompleted) return;
+
+            _indexRefreshTask = null;
+            _isIndexRefreshing = false;
+            if (!IsOpen) return;
+
+            UpdateCountText();
+            RebuildCategories();
+            if (_indexRefreshException == null)
+                RebuildList();
+            else
+                ShowListMessage("谱面库加载失败，请查看 MelonLoader 日志");
+            RefreshCategoryActionButton();
+            ClearSelectionIfHidden();
         }
 
         private static void ResetDifficultyFilters()
@@ -105,6 +176,7 @@ namespace CustomAlbums.UI
             _pendingMaxDifficulty = DefaultMaxDifficulty;
             _activeMinDifficulty = DefaultMinDifficulty;
             _activeMaxDifficulty = DefaultMaxDifficulty;
+            _isDifficultyFilterActive = false;
         }
 
         public static void Close()
@@ -125,6 +197,9 @@ namespace CustomAlbums.UI
             _previewMeta = null;
             _previewDetails = null;
             _previewStatus = null;
+            _categoryActionImage = null;
+            _categoryActionLabel = null;
+            _countText = null;
             _minDifficultyWheelRect = null;
             _maxDifficultyWheelRect = null;
             _minDifficultyWheelTexts = null;
@@ -132,6 +207,14 @@ namespace CustomAlbums.UI
             _selectedEntry = null;
             _hoveredDifficultyWheel = DifficultyWheelKind.None;
             _draggingDifficultyWheel = DifficultyWheelKind.None;
+            _isIndexRefreshing = false;
+            _indexRefreshException = null;
+            EndCategorySaveScope();
+            _categoryImportQueue = null;
+            _categoryImportTotal = 0;
+            _categoryImportActivated = 0;
+            _nextCategoryImportTime = 0f;
+            _categoryBatchAction = CategoryBatchAction.None;
         }
 
         private static void UpdateNativeInputBlock()
@@ -231,10 +314,11 @@ namespace CustomAlbums.UI
 
         private static void CreateHeader(RectTransform panel)
         {
-            var count = CreateText(panel, "Count", $"{LibraryManager.Entries.Count} 张谱面", 20, TextAnchor.MiddleLeft);
-            count.color = ColorTextDim;
-            count.fontStyle = FontStyle.Bold;
-            SetFixedTop(count.rectTransform, 42f, 48f, 180f, 28f);
+            _countText = CreateText(panel, "Count", string.Empty, 20, TextAnchor.MiddleLeft);
+            _countText.color = ColorTextDim;
+            _countText.fontStyle = FontStyle.Bold;
+            SetFixedTop(_countText.rectTransform, 42f, 48f, 180f, 28f);
+            UpdateCountText();
 
             CreateDifficultyFilters(panel);
 
@@ -248,6 +332,142 @@ namespace CustomAlbums.UI
             close.pivot = new Vector2(1f, 1f);
             close.sizeDelta = new Vector2(132f, 46f);
             close.anchoredPosition = new Vector2(-34f, -41f);
+        }
+
+        private static void UpdateCountText()
+        {
+            if (_countText == null) return;
+
+            var entries = LibraryManager.Entries;
+            var activeCount = entries.Count(album => album.IsActive);
+            var skippedCount = LibraryManager.LastSkippedCount;
+            _countText.text = skippedCount > 0
+                ? $"候选 {entries.Count} / 已导入 {activeCount} / 跳过 {skippedCount}"
+                : $"候选 {entries.Count} / 已导入 {activeCount}";
+        }
+
+        private static void RefreshCategoryActionButton()
+        {
+            if (_categoryActionImage == null || _categoryActionLabel == null) return;
+
+            var action = GetCategoryAction();
+            var busy = _categoryImportQueue != null;
+            var color = action == CategoryBatchAction.None || busy ? ColorAccentSoft : ColorAccent;
+            _categoryActionImage.color = color;
+            _categoryActionLabel.text = busy
+                ? (_categoryBatchAction == CategoryBatchAction.Remove ? "移除中" : "导入中")
+                : action == CategoryBatchAction.Remove ? "移除分类" : "导入分类";
+
+            var button = _categoryActionImage.GetComponent<Button>();
+            if (button != null) button.colors = CreateButtonColors(color);
+        }
+
+        private static CategoryBatchAction GetCategoryAction()
+        {
+            if (_selectedCategory == "All" || _selectedCategory == "Active") return CategoryBatchAction.None;
+
+            var entries = LibraryManager.GetCategoryEntries(_selectedCategory);
+            if (entries.Count == 0) return CategoryBatchAction.None;
+            return entries.All(album => album.IsActive) ? CategoryBatchAction.Remove : CategoryBatchAction.Import;
+        }
+
+        private static void CreateCategoryActionButton(RectTransform panel)
+        {
+            var actionButton = CreateButton(panel, "CategoryActionButton", "导入分类", ColorAccent, () =>
+            {
+                var action = GetCategoryAction();
+                if (action == CategoryBatchAction.None || _categoryImportQueue != null)
+                {
+                    LibraryUiSoundManager.Play(LibraryUiSound.Cancel);
+                    return;
+                }
+
+                LibraryUiSoundManager.Play(LibraryUiSound.Yes);
+                BeginCategoryBatch(_selectedCategory, action);
+            });
+            _categoryActionImage = actionButton.GetComponent<Image>();
+            _categoryActionLabel = actionButton.Find("Label")?.GetComponent<Text>();
+            actionButton.anchorMin = new Vector2(1f, 0f);
+            actionButton.anchorMax = new Vector2(1f, 0f);
+            actionButton.pivot = new Vector2(1f, 0f);
+            actionButton.sizeDelta = new Vector2(168f, 46f);
+            actionButton.anchoredPosition = new Vector2(-42f, 14f);
+            RefreshCategoryActionButton();
+        }
+
+        private static void BeginCategoryBatch(string category, CategoryBatchAction action)
+        {
+            var entries = action == CategoryBatchAction.Remove
+                ? LibraryManager.GetActiveCategoryEntries(category).ToList()
+                : LibraryManager.GetInactiveCategoryEntries(category).ToList();
+            if (entries.Count == 0)
+            {
+                SetPreviewStatus(action == CategoryBatchAction.Remove ? "当前分类没有已导入谱面" : "当前分类已全部导入");
+                RefreshCategoryActionButton();
+                return;
+            }
+
+            _categoryImportQueue = entries;
+            _categoryImportTotal = entries.Count;
+            _categoryImportActivated = 0;
+            _nextCategoryImportTime = 0f;
+            _categoryBatchAction = action;
+            _categorySaveScope = LibraryManager.DeferSave();
+            RefreshCategoryActionButton();
+            SetPreviewStatus($"{GetCategoryBatchProgressVerb()} 0 / {_categoryImportTotal}");
+            ProcessCategoryImportBatch();
+        }
+
+        private static void ProcessCategoryImportBatch()
+        {
+            if (_categoryImportQueue == null || _categoryImportQueue.Count == 0) return;
+            if (Time.unscaledTime < _nextCategoryImportTime) return;
+
+            var batchCount = Math.Min(CategoryImportBatchSize, _categoryImportQueue.Count);
+            for (var i = 0; i < batchCount; i++)
+            {
+                var entry = _categoryImportQueue[0];
+                _categoryImportQueue.RemoveAt(0);
+                var success = _categoryBatchAction == CategoryBatchAction.Remove
+                    ? LibraryManager.Deactivate(entry)
+                    : LibraryManager.Activate(entry);
+                if (success) _categoryImportActivated++;
+            }
+
+            if (_categoryImportQueue.Count > 0)
+            {
+                SetPreviewStatus($"{GetCategoryBatchProgressVerb()} {_categoryImportActivated} / {_categoryImportTotal}");
+                _nextCategoryImportTime = Time.unscaledTime + CategoryImportBatchInterval;
+                return;
+            }
+
+            var completedAction = _categoryBatchAction;
+            EndCategorySaveScope();
+            _categoryImportQueue = null;
+            _categoryBatchAction = CategoryBatchAction.None;
+            RebuildCategories();
+            RefreshPreview();
+            RebuildList();
+            RefreshCategoryActionButton();
+            SetPreviewStatus(_categoryImportActivated > 0
+                ? $"{(completedAction == CategoryBatchAction.Remove ? "已移除" : "已导入")} {_categoryImportActivated} 张谱面"
+                : completedAction == CategoryBatchAction.Remove ? "当前分类没有已导入谱面" : "当前分类已全部导入");
+        }
+
+        private static void SetPreviewStatus(string message)
+        {
+            if (_previewStatus != null) _previewStatus.text = message;
+        }
+
+        private static string GetCategoryBatchProgressVerb()
+        {
+            return _categoryBatchAction == CategoryBatchAction.Remove ? "正在分批移除" : "正在分批导入";
+        }
+
+        private static void EndCategorySaveScope()
+        {
+            _categorySaveScope?.Dispose();
+            _categorySaveScope = null;
         }
 
         private static void CreateSearch(RectTransform panel)
@@ -305,6 +525,7 @@ namespace CustomAlbums.UI
 
                 _activeMinDifficulty = minDifficulty;
                 _activeMaxDifficulty = maxDifficulty;
+                _isDifficultyFilterActive = true;
                 RebuildList();
                 ClearSelectionIfHidden();
             });
@@ -619,6 +840,7 @@ namespace CustomAlbums.UI
                     _selectedCategory = category;
                     RebuildCategories();
                     RebuildList();
+                    RefreshCategoryActionButton();
                     ClearSelectionIfHidden();
                 });
                 row.anchorMin = new Vector2(0f, 1f);
@@ -635,6 +857,12 @@ namespace CustomAlbums.UI
         private static void RebuildList()
         {
             Clear(_listContent);
+
+            if (_isIndexRefreshing && LibraryManager.Entries.Count == 0)
+            {
+                ShowListMessage("正在加载谱面库...");
+                return;
+            }
 
             var query = _searchInput?.text ?? string.Empty;
             var albums = GetVisibleAlbums(query).Take(300).ToList();
@@ -657,6 +885,18 @@ namespace CustomAlbums.UI
             _listContent.sizeDelta = new Vector2(0f, Mathf.Max(0f, 20f + albums.Count * RowHeight));
         }
 
+        private static void ShowListMessage(string message)
+        {
+            Clear(_listContent);
+            var text = CreateText(_listContent, "Message", message, 28, TextAnchor.MiddleCenter);
+            text.color = new Color(1f, 1f, 1f, 0.68f);
+            text.rectTransform.anchorMin = new Vector2(0f, 1f);
+            text.rectTransform.anchorMax = new Vector2(1f, 1f);
+            text.rectTransform.sizeDelta = new Vector2(0f, 120f);
+            text.rectTransform.anchoredPosition = new Vector2(0f, -40f);
+            _listContent.sizeDelta = new Vector2(0f, 120f);
+        }
+
         private static void ClearSelectionIfHidden()
         {
             if (_selectedEntry != null && GetVisibleAlbums(_searchInput?.text ?? string.Empty).Any(album => album == _selectedEntry))
@@ -667,6 +907,9 @@ namespace CustomAlbums.UI
 
         private static IEnumerable<LibraryAlbumEntry> GetVisibleAlbums(string query)
         {
+            if (!string.IsNullOrWhiteSpace(query))
+                return LibraryManager.Search(query);
+
             var albums = _selectedCategory == "Active"
                 ? LibraryManager.Search(query).Where(album => album.IsActive)
                 : LibraryManager.Search(query, _selectedCategory);
@@ -675,6 +918,8 @@ namespace CustomAlbums.UI
 
         private static bool IsInActiveDifficultyRange(LibraryAlbumEntry entry)
         {
+            if (!_isDifficultyFilterActive) return true;
+
             var difficulties = GetDifficultyValues(entry.Info).ToList();
             if (difficulties.Count == 0) return _activeMinDifficulty <= 0f;
             return difficulties.Any(value => value >= _activeMinDifficulty && value <= _activeMaxDifficulty);
@@ -744,6 +989,7 @@ namespace CustomAlbums.UI
 
                     RefreshPreview();
                     RebuildList();
+                    RefreshCategoryActionButton();
                 });
             action.anchorMin = new Vector2(1f, 0.5f);
             action.anchorMax = new Vector2(1f, 0.5f);

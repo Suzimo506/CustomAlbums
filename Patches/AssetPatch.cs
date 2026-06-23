@@ -265,6 +265,7 @@ namespace CustomAlbums.Patches
                                 break;
                             case "_cover":
                                 newAsset = album?.AnimatedCover?.Frames[0] ?? album?.Cover;
+                                if (album?.HasGif == true) cache = false;
                                 break;
                             default:
                                 Logger.Error($"Unknown suffix: {suffix}");

@@ -110,6 +110,31 @@ namespace CustomAlbums.Patches
             return invokedHides[uid] && selectedIndex == hideBms.triggerDiff ? hideBms.m_HideDiff : selectedIndex;
         }
 
+        private static bool IsCustomUid(string uid)
+        {
+            return !string.IsNullOrEmpty(uid) && uid.StartsWith($"{AlbumManager.Uid}-");
+        }
+
+        private static bool IsCustomMasterUnlocked(string uid)
+        {
+            var album = AlbumManager.GetByUid(uid);
+            if (album == null) return false;
+
+            var ability = 0f;
+            if (SaveData != null)
+            {
+                SaveData.Ability = Math.Max(SaveData.Ability, GlobalDataBase.dbUi.ability);
+                ability = GameAccountSystem.instance.IsLoggedIn() ? SaveData.Ability : 0;
+            }
+
+            var successParse = Formatting.TryParseAsInt(album.Info.Difficulty3, out var diffNum);
+            var abilityConditionOrGimmick = !successParse || ability >= diffNum;
+
+            return abilityConditionOrGimmick ||
+                   SaveManager.IsMasterUnlocked(album.AlbumName) ||
+                   !album.IsPackaged;
+        }
+
         /// <summary>
         ///     Grabs the custom chart data and injects the PnlRecord with the chart data.
         /// </summary>
@@ -367,15 +392,40 @@ namespace CustomAlbums.Patches
                 }
 
                 // Non-bugged vanilla case
-                if (!uid.StartsWith($"{AlbumManager.Uid}-")) return true;
+                if (!IsCustomUid(uid)) return true;
 
                 // Non-bugged custom case
-                var successParse = Formatting.TryParseAsInt(musicInfo.difficulty3, out var diffNum);
-                var abilityConditionOrGimmick = !successParse || ability >= diffNum;
+                __result = IsCustomMasterUnlocked(uid);
+                return false;
+            }
+        }
 
-                __result = abilityConditionOrGimmick ||
-                           SaveManager.IsMasterUnlocked(AlbumManager.GetAlbumNameFromUid(uid)) ||
-                           !(AlbumManager.GetByUid(musicInfo.uid)?.IsPackaged ?? true);
+        [HarmonyPatch(typeof(DataHelper), nameof(DataHelper.isSelectedUnlockMaster), MethodType.Getter)]
+        internal class SelectedUnlockMasterPatch
+        {
+            private static bool Prefix(ref bool __result)
+            {
+                var selectedUid = DataHelper.selectedMusicUidFromInfoList;
+                var hasCustomSelectionState = IsCustomUid(selectedUid) ||
+                                              DataHelper.selectedAlbumUid == AlbumManager.MusicPackage ||
+                                              DataHelper.selectedAlbumTagIndex == AlbumManager.Uid;
+
+                if (!hasCustomSelectionState)
+                {
+                    selectedUid = DataHelper.selectedMusicUid;
+                    if (!IsCustomUid(selectedUid)) return true;
+                }
+
+                try
+                {
+                    __result = IsCustomUid(selectedUid) && IsCustomMasterUnlocked(selectedUid);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"Failed to resolve custom selected master unlock state for {selectedUid}: {ex.Message}");
+                    __result = false;
+                }
+
                 return false;
             }
         }
@@ -404,32 +454,45 @@ namespace CustomAlbums.Patches
         // ACCOUNT SECTION
         //
 
+        private static bool TryUpdateAlbumFlag(MusicInfo musicInfo, HashSet<string> set, bool add, out bool success)
+        {
+            success = false;
+            if (string.IsNullOrEmpty(musicInfo?.uid) || !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-")) return true;
+            if (!ModSettings.SavingEnabled || SaveData == null || set == null) return false;
+
+            var albumName = AlbumManager.GetAlbumNameFromUid(musicInfo.uid);
+            if (string.IsNullOrWhiteSpace(albumName)) return false;
+
+            if (add)
+                SaveManager.AddAlbumFlag(set, albumName);
+            else
+                SaveManager.RemoveAlbumFlag(set, albumName);
+
+            RefreshInjectedCustomData();
+            success = true;
+            return false;
+        }
+
         // TODO: Figure all of this out without using vanilla save
         [HarmonyPatch(typeof(DBMusicTag), nameof(DBMusicTag.AddHide))]
         internal class AddHidePatch
         {
-            private static bool Prefix(MusicInfo musicInfo)
+            private static bool Prefix(MusicInfo musicInfo, ref bool __result)
             {
-                if (string.IsNullOrEmpty(musicInfo?.uid) || !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-")) return true;
-                if (!ModSettings.SavingEnabled) return false;
-
-                SaveManager.AddAlbumFlag(SaveData.Hides, AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
-                SaveManager.SaveSaveFile();
-                return true;
+                var runOriginal = TryUpdateAlbumFlag(musicInfo, SaveData?.Hides, true, out var success);
+                if (!runOriginal) __result = success;
+                return runOriginal;
             }
         }
 
         [HarmonyPatch(typeof(DBMusicTag), nameof(DBMusicTag.RemoveHide))]
         internal class RemoveHidePatch
         {
-            private static bool Prefix(MusicInfo musicInfo)
+            private static bool Prefix(MusicInfo musicInfo, ref bool __result)
             {
-                if (string.IsNullOrEmpty(musicInfo?.uid) || !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-")) return true;
-                if (!ModSettings.SavingEnabled) return false;
-
-                SaveManager.RemoveAlbumFlag(SaveData.Hides, AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
-                SaveManager.SaveSaveFile();
-                return true;
+                var runOriginal = TryUpdateAlbumFlag(musicInfo, SaveData?.Hides, false, out var success);
+                if (!runOriginal) __result = success;
+                return runOriginal;
             }
         }
 
@@ -438,26 +501,18 @@ namespace CustomAlbums.Patches
         {
             private static bool Prefix(MusicInfo musicInfo)
             {
-                if (string.IsNullOrEmpty(musicInfo?.uid) || !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-")) return true;
-                if (!ModSettings.SavingEnabled) return false;
-
-                SaveManager.AddAlbumFlag(SaveData.Collections, AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
-                SaveManager.SaveSaveFile();
-                return true;
+                return TryUpdateAlbumFlag(musicInfo, SaveData?.Collections, true, out _);
             }
         }
 
         [HarmonyPatch(typeof(DBMusicTag), nameof(DBMusicTag.RemoveCollection))]
         internal class RemoveCollectionPatch
         {
-            private static bool Prefix(MusicInfo musicInfo)
+            private static bool Prefix(MusicInfo musicInfo, ref bool __result)
             {
-                if (string.IsNullOrEmpty(musicInfo?.uid) || !musicInfo.uid.StartsWith($"{AlbumManager.Uid}-")) return true;
-                if (!ModSettings.SavingEnabled) return false;
-
-                SaveManager.RemoveAlbumFlag(SaveData.Collections, AlbumManager.GetAlbumNameFromUid(musicInfo.uid));
-                SaveManager.SaveSaveFile();
-                return true;
+                var runOriginal = TryUpdateAlbumFlag(musicInfo, SaveData?.Collections, false, out var success);
+                if (!runOriginal) __result = success;
+                return runOriginal;
             }
         }
 

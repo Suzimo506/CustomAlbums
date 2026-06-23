@@ -14,6 +14,8 @@ namespace CustomAlbums.Data
         public AlbumInfo Info { get; set; } = new();
         public bool HasPng { get; set; }
         public bool HasGif { get; set; }
+        public bool HasWebp { get; set; }
+        public List<string> ChartMd5s { get; set; } = new();
 
         [JsonIgnore]
         public bool IsActive => HasActiveFile(ActiveFileName) || HasActiveFile(LegacyActiveFileName);

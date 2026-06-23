@@ -21,5 +21,10 @@ namespace CustomAlbums.ModExtensions
             remove => AlbumManager.OnAlbumLoaded -= value;
         }
 
+        public static event LoadAlbumEvent OnAlbumRemoved
+        {
+            add => AlbumManager.OnAlbumRemoved += value;
+            remove => AlbumManager.OnAlbumRemoved -= value;
+        }
     }
 }

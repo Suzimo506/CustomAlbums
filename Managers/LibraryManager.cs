@@ -11,21 +11,50 @@ namespace CustomAlbums.Managers
     {
         public const string LibraryPath = "CustomAlbums_Library";
 
-        private const int CacheVersion = 1;
+        private const int CacheVersion = 3;
         private const string CacheLocation = "UserData";
         private const string CacheFile = "CustomAlbums_LibraryIndex.json";
         private const string DefaultCategory = "Unsorted";
 
         private static readonly Logger Logger = new(nameof(LibraryManager));
+        private static int _deferSaveDepth;
+        private static bool _savePending;
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
             WriteIndented = true,
             PropertyNameCaseInsensitive = true
         };
 
+        private static readonly object AlbumsLock = new();
         private static readonly List<LibraryAlbumEntry> Albums = new();
+        private static int _lastSkippedCount;
 
-        public static IReadOnlyList<LibraryAlbumEntry> Entries => Albums;
+        public static IReadOnlyList<LibraryAlbumEntry> Entries
+        {
+            get
+            {
+                lock (AlbumsLock)
+                    return Albums.ToList();
+            }
+        }
+
+        public static int LastSkippedCount => _lastSkippedCount;
+
+        public static void LoadCachedIndex()
+        {
+            EnsureDirectories();
+            var albums = LoadCache()
+                .Select(UpdateCachedEntryState)
+                .Where(album => album != null)
+                .OrderBy(album => album.Info.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            lock (AlbumsLock)
+            {
+                Albums.Clear();
+                Albums.AddRange(albums);
+            }
+        }
 
         public static void RefreshIndex()
         {
@@ -35,8 +64,9 @@ namespace CustomAlbums.Managers
                 .GroupBy(album => album.RelativePath)
                 .ToDictionary(group => group.Key, group => group.First());
 
-            Albums.Clear();
+            var albums = new List<LibraryAlbumEntry>();
 
+            var skippedCount = 0;
             foreach (var path in SafeEnumerateLibraryFiles())
             {
                 var relativePath = NormalizeRelativePath(Path.GetRelativePath(LibraryPath, path));
@@ -50,22 +80,32 @@ namespace CustomAlbums.Managers
                     cached.FileName = Path.GetFileName(relativePath);
                     cached.ActiveFileName = GetActiveFileName(relativePath);
                     cached.LegacyActiveFileName = GetLegacyActiveFileName(relativePath);
-                    Albums.Add(cached);
+                    cached.ChartMd5s ??= new List<string>();
+                    albums.Add(cached);
                     continue;
                 }
 
                 var entry = ReadEntry(path, relativePath, fileInfo);
-                if (entry != null) Albums.Add(entry);
+                if (entry != null)
+                    albums.Add(entry);
+                else
+                    skippedCount++;
             }
 
-            Albums.Sort((left, right) => string.Compare(left.Info.Name, right.Info.Name, StringComparison.OrdinalIgnoreCase));
+            albums.Sort((left, right) => string.Compare(left.Info.Name, right.Info.Name, StringComparison.OrdinalIgnoreCase));
+            lock (AlbumsLock)
+            {
+                Albums.Clear();
+                Albums.AddRange(albums);
+                _lastSkippedCount = skippedCount;
+            }
             SaveCache();
-            Logger.Msg($"Library index refreshed: {Albums.Count} albums.", false);
+            Logger.Msg($"Library index refreshed: {albums.Count} albums, skipped {skippedCount} unsupported files.", false);
         }
 
         public static IEnumerable<LibraryAlbumEntry> Search(string query, string category = null)
         {
-            var albums = Albums.AsEnumerable();
+            var albums = Entries.AsEnumerable();
 
             if (!string.IsNullOrWhiteSpace(category) && category != "All")
             {
@@ -87,7 +127,7 @@ namespace CustomAlbums.Managers
 
         public static IEnumerable<string> GetCategories()
         {
-            return Albums
+            return Entries
                 .Select(album => album.Category)
                 .Where(category => !string.IsNullOrWhiteSpace(category))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -138,6 +178,31 @@ namespace CustomAlbums.Managers
             return Activate(GetByRelativePath(relativePath));
         }
 
+        public static IReadOnlyList<LibraryAlbumEntry> GetInactiveCategoryEntries(string category)
+        {
+            return GetCategoryEntries(category)
+                .Where(album => !album.IsActive)
+                .ToList();
+        }
+
+        public static IReadOnlyList<LibraryAlbumEntry> GetActiveCategoryEntries(string category)
+        {
+            return GetCategoryEntries(category)
+                .Where(album => album.IsActive)
+                .ToList();
+        }
+
+        public static IReadOnlyList<LibraryAlbumEntry> GetCategoryEntries(string category)
+        {
+            if (string.IsNullOrWhiteSpace(category) ||
+                category.Equals("All", StringComparison.OrdinalIgnoreCase) ||
+                category.Equals("Active", StringComparison.OrdinalIgnoreCase))
+                return Array.Empty<LibraryAlbumEntry>();
+
+            return Search(null, category)
+                .ToList();
+        }
+
         public static bool Deactivate(LibraryAlbumEntry entry)
         {
             if (entry == null || string.IsNullOrEmpty(entry.ActiveFileName)) return false;
@@ -166,10 +231,23 @@ namespace CustomAlbums.Managers
             return Deactivate(GetByRelativePath(relativePath));
         }
 
+        public static IDisposable DeferSave()
+        {
+            _deferSaveDepth++;
+            return new DeferredSaveScope();
+        }
+
+        public static bool HasChartMd5(LibraryAlbumEntry entry, string md5)
+        {
+            return entry?.ChartMd5s != null &&
+                   !string.IsNullOrWhiteSpace(md5) &&
+                   entry.ChartMd5s.Any(value => value.Equals(md5, StringComparison.OrdinalIgnoreCase));
+        }
+
         public static LibraryAlbumEntry GetByRelativePath(string relativePath)
         {
             relativePath = NormalizeRelativePath(relativePath);
-            return Albums.FirstOrDefault(album =>
+            return Entries.FirstOrDefault(album =>
                 album.RelativePath.Equals(relativePath, StringComparison.OrdinalIgnoreCase));
         }
 
@@ -181,7 +259,13 @@ namespace CustomAlbums.Managers
                 var info = zip.GetEntry("info.json");
                 if (info == null)
                 {
-                    Logger.Warning($"Library album has no info.json: {relativePath}");
+                    var metadata = zip.GetEntry("chart_metadata.json");
+                    var hasEditorXml = zip.Entries.Any(entry =>
+                        entry.FullName.StartsWith("map", StringComparison.OrdinalIgnoreCase) &&
+                        entry.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase));
+                    Logger.Warning(metadata != null && hasEditorXml
+                        ? $"Library album uses unsupported chart_metadata/map.xml format: {relativePath}"
+                        : $"Library album has no info.json: {relativePath}");
                     return null;
                 }
 
@@ -200,7 +284,9 @@ namespace CustomAlbums.Managers
                     LegacyActiveFileName = GetLegacyActiveFileName(relativePath),
                     Info = albumInfo,
                     HasPng = zip.GetEntry("cover.png") != null,
-                    HasGif = zip.GetEntry("cover.gif") != null
+                    HasGif = zip.GetEntry("cover.gif") != null,
+                    HasWebp = zip.GetEntry("cover.webp") != null,
+                    ChartMd5s = ReadChartMd5s(zip)
                 };
             }
             catch (Exception ex)
@@ -228,6 +314,18 @@ namespace CustomAlbums.Managers
             }
         }
 
+        private static LibraryAlbumEntry UpdateCachedEntryState(LibraryAlbumEntry cached)
+        {
+            if (cached == null || string.IsNullOrWhiteSpace(cached.RelativePath)) return null;
+
+            cached.Category = GetCategory(cached.RelativePath);
+            cached.FileName = Path.GetFileName(cached.RelativePath);
+            cached.ActiveFileName = GetActiveFileName(cached.RelativePath);
+            cached.LegacyActiveFileName = GetLegacyActiveFileName(cached.RelativePath);
+            cached.ChartMd5s ??= new List<string>();
+            return cached;
+        }
+
         private static void SaveCache()
         {
             try
@@ -236,7 +334,7 @@ namespace CustomAlbums.Managers
                 var cache = new LibraryIndexCache
                 {
                     CacheVersion = CacheVersion,
-                    Albums = Albums.ToList()
+                    Albums = Entries.ToList()
                 };
                 File.WriteAllText(GetCachePath(), JsonSerializer.Serialize(cache, JsonOptions));
             }
@@ -358,6 +456,17 @@ namespace CustomAlbums.Managers
             var libraryAlbumName = GetAlbumName(entry.FileName);
             var legacyAlbumName = GetAlbumName(entry.LegacyActiveFileName);
             SaveManager.SynchronizeAlbumAliases(activePackedAlbumName, activeAlbumName, libraryAlbumName, legacyAlbumName);
+            RequestSave();
+        }
+
+        private static void RequestSave()
+        {
+            if (_deferSaveDepth > 0)
+            {
+                _savePending = true;
+                return;
+            }
+
             SaveManager.SaveSaveFile();
         }
 
@@ -381,6 +490,48 @@ namespace CustomAlbums.Managers
         {
             return !string.IsNullOrEmpty(text) &&
                    text.Contains(value, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static List<string> ReadChartMd5s(ZipArchive zip)
+        {
+            var md5s = new List<string>();
+            foreach (var entry in zip.Entries)
+            {
+                if (!entry.FullName.StartsWith("map", StringComparison.OrdinalIgnoreCase) ||
+                    !entry.FullName.EndsWith(".bms", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                try
+                {
+                    using var stream = entry.Open();
+                    md5s.Add(stream.GetHash());
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning($"Failed to calculate library chart MD5 for {entry.FullName}: {ex.Message}");
+                }
+            }
+
+            return md5s
+                .Where(md5 => !string.IsNullOrWhiteSpace(md5))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private sealed class DeferredSaveScope : IDisposable
+        {
+            private bool _disposed;
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _disposed = true;
+                _deferSaveDepth = Math.Max(0, _deferSaveDepth - 1);
+                if (_deferSaveDepth != 0 || !_savePending) return;
+
+                _savePending = false;
+                SaveManager.SaveSaveFile();
+            }
         }
 
         private static IEnumerable<string> SafeEnumerateLibraryFiles()

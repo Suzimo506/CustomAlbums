@@ -31,6 +31,7 @@ namespace CustomAlbums.Managers
         private static readonly Logger Logger = new(nameof(AlbumManager));
         internal static readonly FileSystemWatcher AlbumWatcher = new();
         internal static Events.LoadAlbumEvent OnAlbumLoaded;
+        internal static Events.LoadAlbumEvent OnAlbumRemoved;
 
         private static int MaxCount { get; set; }
         internal static string CurrentPack { get; set; } = null;
@@ -146,7 +147,7 @@ namespace CustomAlbums.Managers
                 LoadedAlbums.Add(albumName, album);
                 MaxCount++;
 
-                if (album.HasPng)
+                if (album.HasPng || album.HasWebp)
                     ResourcesManager.instance.LoadFromName<Sprite>($"{albumName}_cover").hideFlags |=
                         HideFlags.DontUnloadUnusedAsset;
 
@@ -192,7 +193,7 @@ namespace CustomAlbums.Managers
                 LoadedAlbums.Add(albumName, album);
                 MaxCount++;
 
-                if (album.HasPng)
+                if (album.HasPng || album.HasWebp)
                     ResourcesManager.instance.LoadFromName<Sprite>($"{albumName}_cover").hideFlags |=
                         HideFlags.DontUnloadUnusedAsset;
 

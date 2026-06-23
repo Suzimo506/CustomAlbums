@@ -21,6 +21,9 @@ namespace CustomAlbums.Managers
     internal static class HotReloadManager
     {
         private static readonly Logger Logger = new(nameof(HotReloadManager));
+        private const int MaxAdditionsPerUpdate = 1;
+        private const int MaxDeletionsPerUpdate = 3;
+        private static readonly TimeSpan HotReloadBatchInterval = TimeSpan.FromMilliseconds(250);
 
         // Localization texts for the notification banner
         private static readonly Dictionary<string, string> AddedTranslations = new()
@@ -58,6 +61,9 @@ namespace CustomAlbums.Managers
         private static ConcurrentQueue<string> AlbumsToDelete { get; } = new();
         private static ConcurrentDictionary<string, DateTime> LastFileEvent { get; } = new();
         private static PnlStage PnlStageInstance { get; set; }
+        private static DateTime NextHotReloadBatchTime { get; set; } = DateTime.MinValue;
+        private static int PendingAddedNotice { get; set; }
+        private static int PendingDeletedNotice { get; set; }
 
         // Hot-loaded MusicInfo cache: uid -> MusicInfo
         // Used by GetMusicInfoFromAll Harmony Postfix
@@ -181,12 +187,14 @@ namespace CustomAlbums.Managers
         /// <summary>
         ///     Hot-add: Injects a new .mdm file into the game's runtime database.
         /// </summary>
-        private static int ProcessAdditions()
+        private static int ProcessAdditions(int maxCount)
         {
             var addedCount = 0;
+            var processedCount = 0;
 
-            while (AlbumsToAdd.TryDequeue(out var path))
+            while (processedCount < maxCount && AlbumsToAdd.TryDequeue(out var path))
             {
+                processedCount++;
                 try
                 {
                     // 1. Load album into AlbumManager
@@ -201,7 +209,6 @@ namespace CustomAlbums.Managers
                     var uid = $"{AlbumManager.Uid}-{album.Index}";
                     var albumInfo = album.Info;
                     SaveManager.SynchronizeAlbumAliases(albumName);
-                    SaveManager.SaveSaveFile();
                     Logger.Msg($"HotReload: Adding {albumName} (UID: {uid})", false);
 
                     // 2. Transmute: Native DBObject generation via JSON
@@ -405,11 +412,12 @@ namespace CustomAlbums.Managers
                     // 4. Preload cover resources
                     try
                     {
-                        if (album.HasFile("cover.png") || album.HasFile("cover.gif"))
+                        if (album.HasFile("cover.png") || album.HasFile("cover.webp") || album.HasFile("cover.gif"))
                         {
                             ResourcesManager.instance
                                 .LoadFromName<UnityEngine.Sprite>($"{albumName}_cover")
                                 .hideFlags |= UnityEngine.HideFlags.DontUnloadUnusedAsset;
+                            if (album.HasGif) CoverManager.EnqueueGifToLoad(album);
                         }
                     }
                     catch (Exception ex)
@@ -434,12 +442,14 @@ namespace CustomAlbums.Managers
         /// <summary>
         ///     Hot-delete: Removes a specified album from the game's runtime database.
         /// </summary>
-        private static int ProcessDeletions()
+        private static int ProcessDeletions(int maxCount)
         {
             var deletedCount = 0;
+            var processedCount = 0;
 
-            while (AlbumsToDelete.TryDequeue(out var albumPath))
+            while (processedCount < maxCount && AlbumsToDelete.TryDequeue(out var albumPath))
             {
+                processedCount++;
                 try
                 {
                     var album = FindLoadedAlbumForPath(albumPath);
@@ -523,11 +533,11 @@ namespace CustomAlbums.Managers
                     // Clear resource cache
                     AlbumManager.LoadedAlbums.Remove(albumKey);
                     PackManager.RemoveAlbum(album);
-                    CoverManager.CachedAnimatedCovers.Remove(album.Index);
-                    CoverManager.CachedCovers.Remove(album.Index);
+                    CoverManager.ClearCache(album.Index);
                     AssetPatch.RemoveFromCache($"{albumKey}_demo");
                     AssetPatch.RemoveFromCache($"{albumKey}_music");
                     AssetPatch.RemoveFromCache($"{albumKey}_cover");
+                    AlbumManager.OnAlbumRemoved?.Invoke(typeof(AlbumManager), new CustomAlbums.ModExtensions.AlbumEventArgs(album));
 
                     deletedCount++;
                     Logger.Msg($"HotReload: Removed {albumKey}", false);
@@ -621,25 +631,21 @@ namespace CustomAlbums.Managers
             if (AlbumsToAdd.IsEmpty && AlbumsToDelete.IsEmpty) return;
 
             if (PnlStageInstance == null) return;
+            var now = DateTime.UtcNow;
+            if (now < NextHotReloadBatchTime) return;
 
             Logger.Msg($"HotReload: Processing queue (add={AlbumsToAdd.Count}, del={AlbumsToDelete.Count})", false);
             
             var oldSelectedUid = DataHelper.selectedMusicUidFromInfoList;
             var oldSelectedAlbumName = AlbumManager.GetAlbumNameFromUid(oldSelectedUid);
 
-            var deletedCount = ProcessDeletions();
-            var addedCount = ProcessAdditions();
+            var deletedCount = ProcessDeletions(MaxDeletionsPerUpdate);
+            var addedCount = ProcessAdditions(MaxAdditionsPerUpdate);
 
             if (deletedCount > 0 || addedCount > 0)
             {
-                if (addedCount > 0)
-                {
-                    Il2CppAssets.Scripts.UI.Controls.ShowText.ShowInfo(GetLocalizedMessage(AddedTranslations, addedCount));
-                }
-                if (deletedCount > 0)
-                {
-                    Il2CppAssets.Scripts.UI.Controls.ShowText.ShowInfo(GetLocalizedMessage(DeletedTranslations, deletedCount));
-                }
+                PendingAddedNotice += addedCount;
+                PendingDeletedNotice += deletedCount;
 
                 if (!string.IsNullOrEmpty(oldSelectedAlbumName) && oldSelectedUid != "0-0")
                 {
@@ -711,6 +717,24 @@ namespace CustomAlbums.Managers
                 {
                     Logger.Warning($"HotReload: Failed to trigger HiddenQoL: {ex.Message}");
                 }
+            }
+
+            if (!AlbumsToAdd.IsEmpty || !AlbumsToDelete.IsEmpty)
+            {
+                NextHotReloadBatchTime = now + HotReloadBatchInterval;
+                return;
+            }
+
+            if (PendingAddedNotice > 0)
+            {
+                Il2CppAssets.Scripts.UI.Controls.ShowText.ShowInfo(GetLocalizedMessage(AddedTranslations, PendingAddedNotice));
+                PendingAddedNotice = 0;
+            }
+
+            if (PendingDeletedNotice > 0)
+            {
+                Il2CppAssets.Scripts.UI.Controls.ShowText.ShowInfo(GetLocalizedMessage(DeletedTranslations, PendingDeletedNotice));
+                PendingDeletedNotice = 0;
             }
         }
 

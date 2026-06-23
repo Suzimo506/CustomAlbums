@@ -68,17 +68,16 @@ namespace CustomAlbums.Patches
                     var album = AlbumManager.GetByUid(uid);
                     var animatedCover = album?.AnimatedCover;
                     
-                    // If cell is not animated
-                    if (animatedCover is null || animatedCover.FramesPerSecond is 0)
+                    // GIF covers are decoded asynchronously; keep the cell registered until frames are ready.
+                    if (animatedCover is null || animatedCover.FramesPerSecond is 0 || animatedCover.FrameCount is 0)
                     {
-                        Cells.Remove(node);
+                        if (album?.HasGif != true || CoverManager.HasAnimatedCoverFailed(album)) Cells.Remove(node);
                         node = next;
                         continue;
                     }
 
                     // Animate the cell, with one last null check
-                    var frame = (int)Mathf.Floor(Time.time * 1000) %
-                        (animatedCover.FramesPerSecond * animatedCover.FrameCount) / animatedCover.FramesPerSecond;
+                    var frame = Mathf.FloorToInt(Time.time * animatedCover.FramesPerSecond) % animatedCover.FrameCount;
                     if (cell != null) cell.m_StageImg.sprite = animatedCover.Frames[frame];
                     node = next;
                 }

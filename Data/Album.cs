@@ -33,6 +33,7 @@ namespace CustomAlbums.Data
 
             HasGif = openedZip.GetEntry("cover.gif") != null;
             HasPng = openedZip.GetEntry("cover.png") != null;
+            HasWebp = openedZip.GetEntry("cover.webp") != null;
 
             Index = index;
             Path = directory;
@@ -56,6 +57,7 @@ namespace CustomAlbums.Data
                 Info = Json.Deserialize<AlbumInfo>(fileStream);
                 HasGif = File.Exists(System.IO.Path.Combine(path, "cover.gif"));
                 HasPng = File.Exists(System.IO.Path.Combine(path, "cover.png"));
+                HasWebp = File.Exists(System.IO.Path.Combine(path, "cover.webp"));
             }
             else if (File.Exists(path))
             {
@@ -78,6 +80,7 @@ namespace CustomAlbums.Data
 
                 HasGif = zip.GetEntry("cover.gif") != null;
                 HasPng = zip.GetEntry("cover.png") != null;
+                HasWebp = zip.GetEntry("cover.webp") != null;
             }
             else
             {
@@ -98,6 +101,7 @@ namespace CustomAlbums.Data
         public bool IsPack { get; }
         public bool HasPng { get; }
         public bool HasGif { get; }
+        public bool HasWebp { get; }
         public string PackName { get; }
         public AlbumInfo Info { get; }
         public Sprite Cover => this.GetCover();
