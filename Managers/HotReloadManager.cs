@@ -417,7 +417,6 @@ namespace CustomAlbums.Managers
                             ResourcesManager.instance
                                 .LoadFromName<UnityEngine.Sprite>($"{albumName}_cover")
                                 .hideFlags |= UnityEngine.HideFlags.DontUnloadUnusedAsset;
-                            if (album.HasGif) CoverManager.EnqueueGifToLoad(album);
                         }
                     }
                     catch (Exception ex)

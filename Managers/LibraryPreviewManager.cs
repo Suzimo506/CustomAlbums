@@ -1,6 +1,4 @@
 using System.IO.Compression;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using CustomAlbums.Data;
 using CustomAlbums.Utilities;
 using Il2CppAssets.Scripts.Database;
@@ -23,6 +21,15 @@ namespace CustomAlbums.Managers
         private static AudioSource _previewSource;
         private static AudioClip _previewClip;
         private static Sprite _previewCover;
+        private static readonly Configuration ImageConfig = CreateImageSharpConfiguration();
+        private const uint PreviewGifMaxFrames = 16;
+
+        private static Configuration CreateImageSharpConfiguration()
+        {
+            var configuration = Configuration.Default.Clone();
+            configuration.PreferContiguousImageBuffers = true;
+            return configuration;
+        }
 
         public static void MuteGameDemo()
         {
@@ -104,13 +111,10 @@ namespace CustomAlbums.Managers
         private static Sprite LoadWebpCover(ZipArchiveEntry cover)
         {
             using var stream = cover.Open();
-            using var image = Image.Load<Rgba32>(new DecoderOptions { Configuration = Configuration.Default }, stream);
+            using var image = Image.Load<Rgba32>(new DecoderOptions { Configuration = ImageConfig }, stream);
             image.Mutate(context => context.Flip(FlipMode.Vertical));
 
-            if (!image.DangerousTryGetSinglePixelMemory(out var memory)) return null;
-
-            var buffer = new byte[memory.Length * Unsafe.SizeOf<Rgba32>()];
-            memory.Span.CopyTo(MemoryMarshal.Cast<byte, Rgba32>(buffer.AsSpan()));
+            var buffer = CopyImagePixels(image);
 
             var texture = new Texture2D(image.Width, image.Height, TextureFormat.RGBA32, false)
             {
@@ -130,7 +134,13 @@ namespace CustomAlbums.Managers
             }
 
             using var stream = cover.Open();
-            var info = Image.Identify(new DecoderOptions { Configuration = Configuration.Default }, stream);
+            var decodeOptions = new DecoderOptions
+            {
+                Configuration = ImageConfig,
+                MaxFrames = PreviewGifMaxFrames,
+                SkipMetadata = false
+            };
+            var info = Image.Identify(decodeOptions, stream);
             if (info == null ||
                 info.Width > MaxPreviewGifDimension ||
                 info.Height > MaxPreviewGifDimension)
@@ -140,20 +150,17 @@ namespace CustomAlbums.Managers
             }
             stream.Position = 0;
 
-            using var gif = Image.Load<Rgba32>(new DecoderOptions { Configuration = Configuration.Default }, stream);
+            using var gif = Image.Load<Rgba32>(decodeOptions, stream);
             if (gif.Frames.Count == 0) return null;
 
             gif.Mutate(context => context.Flip(FlipMode.Vertical));
-            var frame = gif.Frames.RootFrame;
+            var frame = FindBestPreviewFrame(gif);
             if (frame.Width > MaxPreviewGifDimension || frame.Height > MaxPreviewGifDimension)
             {
                 Logger.Warning($"Skipping library preview GIF: frame too large ({frame.Width}x{frame.Height}).");
                 return null;
             }
-            if (!frame.DangerousTryGetSinglePixelMemory(out var memory)) return null;
-
-            var buffer = new byte[memory.Length * Unsafe.SizeOf<Rgba32>()];
-            memory.Span.CopyTo(MemoryMarshal.Cast<byte, Rgba32>(buffer.AsSpan()));
+            var buffer = CopyFramePixels(frame);
 
             var texture = new Texture2D(frame.Width, frame.Height, TextureFormat.RGBA32, false)
             {
@@ -162,6 +169,50 @@ namespace CustomAlbums.Managers
             texture.LoadRawTextureData(buffer.CopyFromManaged());
             texture.Apply(false, true);
             return SetPreviewCover(texture);
+        }
+
+        private static ImageFrame<Rgba32> FindBestPreviewFrame(Image<Rgba32> gif)
+        {
+            var bestFrame = gif.Frames.RootFrame;
+            var bestScore = -1;
+            foreach (var frame in gif.Frames)
+            {
+                var score = EstimateVisiblePixels(frame);
+                if (score <= bestScore) continue;
+                bestFrame = frame;
+                bestScore = score;
+            }
+
+            return bestFrame;
+        }
+
+        private static int EstimateVisiblePixels(ImageFrame<Rgba32> frame)
+        {
+            var buffer = CopyFramePixels(frame);
+            var score = 0;
+            for (var i = 0; i + 3 < buffer.Length; i += 4)
+            {
+                if (buffer[i + 3] <= 16) continue;
+                score++;
+                if (buffer[i] + buffer[i + 1] + buffer[i + 2] > 30)
+                    score += 2;
+            }
+
+            return score;
+        }
+
+        private static byte[] CopyImagePixels(Image<Rgba32> image)
+        {
+            var buffer = new byte[image.Width * image.Height * 4];
+            image.CopyPixelDataTo(buffer);
+            return buffer;
+        }
+
+        private static byte[] CopyFramePixels(ImageFrame<Rgba32> frame)
+        {
+            var buffer = new byte[frame.Width * frame.Height * 4];
+            frame.CopyPixelDataTo(buffer);
+            return buffer;
         }
 
         private static Sprite SetPreviewCover(Texture2D texture)

@@ -147,11 +147,9 @@ namespace CustomAlbums.Managers
                 LoadedAlbums.Add(albumName, album);
                 MaxCount++;
 
-                if (album.HasPng || album.HasWebp)
+                if (album.HasPng || album.HasWebp || album.HasGif)
                     ResourcesManager.instance.LoadFromName<Sprite>($"{albumName}_cover").hideFlags |=
                         HideFlags.DontUnloadUnusedAsset;
-
-                if (album.HasGif) CoverManager.EnqueueGifToLoad(album);
 
                 Logger.Msg($"Loaded {albumName}: {album.Info.Name}");
                 OnAlbumLoaded?.Invoke(typeof(AlbumManager), new AlbumEventArgs(album));
@@ -193,11 +191,9 @@ namespace CustomAlbums.Managers
                 LoadedAlbums.Add(albumName, album);
                 MaxCount++;
 
-                if (album.HasPng || album.HasWebp)
+                if (album.HasPng || album.HasWebp || album.HasGif)
                     ResourcesManager.instance.LoadFromName<Sprite>($"{albumName}_cover").hideFlags |=
                         HideFlags.DontUnloadUnusedAsset;
-
-                if (album.HasGif) CoverManager.EnqueueGifToLoad(album);
 
                 Logger.Msg($"Loaded {albumName}: {album.Info.Name}");
                 OnAlbumLoaded?.Invoke(typeof(AlbumManager), new AlbumEventArgs(album));

@@ -14,7 +14,7 @@ namespace CustomAlbums
 
         public const string MelonName = "CustomAlbums";
         public const string MelonAuthor = "Two Fellas";
-        public const string MelonVersion = "4.2.3";
+        public const string MelonVersion = "4.2.4";
         private static string CurrentScene { get; set; } = string.Empty;
         internal static bool IsLobbyScene => CurrentScene == "UISystem_PC";
 
@@ -65,21 +65,12 @@ namespace CustomAlbums
             MusicStageCellPatch.AnimateCoversUpdate();
         }
 
-        /// <summary>
-        ///     This override adds support for hot reloading.
-        /// </summary>
         public override void OnFixedUpdate()
         {
             base.OnFixedUpdate();
             if (!IsLobbyScene) return;
 
             HotReloadManager.FixedUpdate();
-
-            // Dispatcher for GIF covers
-            if (CoverManager.GifAlbumDatas.TryDequeue(out var gifData))
-            {
-                CoverManager.LoadAnimatedCover(gifData);
-            }
         }
 
         public override void OnSceneWasLoaded(int buildIndex, string sceneName)
