@@ -39,6 +39,7 @@ namespace CustomAlbums
             SavePatch.AttachHook();
             AlbumManager.LoadAlbums();
             SaveManager.LoadSaveFile();
+            Logger.Msg("Crashfix 2026-06-24.2 loaded.", false);
             Logger.Msg("Initialized CustomAlbums!", false);
         }
 

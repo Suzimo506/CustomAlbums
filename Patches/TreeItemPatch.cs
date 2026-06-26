@@ -1,4 +1,5 @@
 using Il2Cpp;
+using CustomAlbums.Managers;
 using CustomAlbums.Utilities;
 using HarmonyLib;
 
@@ -8,13 +9,15 @@ namespace CustomAlbums.Patches
     {
         // TODO: Finish "Album" support
         private static readonly Logger Logger = new(nameof(TreeItemPatch));
+        internal static bool IsCustomAlbumStateInjected { get; private set; }
+        internal static void SetCustomAlbumStateInjected(bool injected) => IsCustomAlbumStateInjected = injected;
 
         [HarmonyPatch(typeof(PnlMusicTagItem), nameof(PnlMusicTagItem.OnTagClicked))]
         internal class OnMusicTagClickedPatch
         {
             private static void Prefix(int tagIndex, PnlMusicTagItem __instance)
             {
-                // STUB
+                if (tagIndex == AlbumManager.Uid) SetCustomAlbumStateInjected(true);
             }
         }
 

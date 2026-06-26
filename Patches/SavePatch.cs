@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Reflection;
 using CustomAlbums.Data;
 using CustomAlbums.Managers;
 using CustomAlbums.Utilities;
@@ -313,6 +314,8 @@ namespace CustomAlbums.Patches
         // TODO: Find a way to inject hidden and favorite charts without using vanilla save -- below are workarounds for quick release.
         private static void CleanCustomData()
         {
+            TreeItemPatch.SetCustomAlbumStateInjected(false);
+
             DataHelper.hides.RemoveAll((Il2CppSystem.Predicate<string>)(uid => uid.StartsWith($"{AlbumManager.Uid}-")));
             DataHelper.history.RemoveAll(
                 (Il2CppSystem.Predicate<string>)(uid => uid.StartsWith($"{AlbumManager.Uid}-")));
@@ -354,6 +357,7 @@ namespace CustomAlbums.Patches
             DataHelper.collections.AddManagedRange(SaveData.Collections.GetAlbumUidsFromNames());
 
             if (string.IsNullOrEmpty(SaveData.SelectedAlbum) || !SaveData.SelectedAlbum.StartsWith("album_")) return;
+            TreeItemPatch.SetCustomAlbumStateInjected(true);
             DataHelper.selectedAlbumUid = "music_package_999";
             DataHelper.selectedAlbumTagIndex = 999;
             DataHelper.selectedMusicUidFromInfoList = AlbumManager.LoadedAlbums.TryGetValue(SaveManager.ResolveLoadedAlbumName(SaveData.SelectedAlbum), out var album) ? album.Uid : "0-0";
@@ -369,11 +373,19 @@ namespace CustomAlbums.Patches
             InjectCustomData();
         }
 
-        [HarmonyPatch(typeof(DataHelper), nameof(DataHelper.CheckMusicUnlockMaster), new Type[] { typeof(MusicInfo), typeof(bool) })]
+        [HarmonyPatch]
         internal class CheckUnlockMasterPatch
         {
+            private static IEnumerable<MethodBase> TargetMethods()
+            {
+                return typeof(DataHelper).GetMethods()
+                    .Where(method => method.Name == nameof(DataHelper.CheckMusicUnlockMaster));
+            }
+
             private static bool Prefix(MusicInfo musicInfo, ref bool __result)
             {
+                if (SaveData == null) return true;
+
                 SaveData.Ability = Math.Max(SaveData.Ability, GlobalDataBase.dbUi.ability);
                 var ability = GameAccountSystem.instance.IsLoggedIn() ? SaveData.Ability : 0;
                 var uid = musicInfo?.uid;
@@ -405,28 +417,19 @@ namespace CustomAlbums.Patches
         {
             private static bool Prefix(ref bool __result)
             {
-                var selectedUid = DataHelper.selectedMusicUidFromInfoList;
-                var hasCustomSelectionState = IsCustomUid(selectedUid) ||
-                                              DataHelper.selectedAlbumUid == AlbumManager.MusicPackage ||
-                                              DataHelper.selectedAlbumTagIndex == AlbumManager.Uid;
+                if (!TreeItemPatch.IsCustomAlbumStateInjected) return true;
 
-                if (!hasCustomSelectionState)
-                {
-                    selectedUid = DataHelper.selectedMusicUid;
-                    if (!IsCustomUid(selectedUid)) return true;
-                }
-
-                try
-                {
-                    __result = IsCustomUid(selectedUid) && IsCustomMasterUnlocked(selectedUid);
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error($"Failed to resolve custom selected master unlock state for {selectedUid}: {ex.Message}");
-                    __result = false;
-                }
-
+                __result = true;
                 return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(DataHelper), nameof(DataHelper.selectedAlbumTagIndex), MethodType.Setter)]
+        internal class SelectedAlbumTagIndexPatch
+        {
+            private static void Prefix(int value)
+            {
+                TreeItemPatch.SetCustomAlbumStateInjected(value == AlbumManager.Uid);
             }
         }
 
