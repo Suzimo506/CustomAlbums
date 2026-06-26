@@ -2,7 +2,6 @@ using CustomAlbums.Data;
 using CustomAlbums.ModExtensions;
 using CustomAlbums.Utilities;
 using Il2CppAssets.Scripts.PeroTools.Commons;
-using Il2CppAssets.Scripts.PeroTools.GeneralLocalization;
 using Il2CppPeroTools2.Resources;
 using System.IO.Compression;
 using UnityEngine;
@@ -308,10 +307,7 @@ namespace CustomAlbums.Managers
         /// <returns>The current "Custom Albums" title based on language.</returns>
         public static string GetCustomAlbumsTitle()
         {
-            return Languages.GetValueOrDefault(
-                SingletonScriptableObject<LocalizationSettings>
-                .instance?
-                .GetActiveOption("Language") ?? "English");
+            return I18n.Get("custom_albums.title");
         }
     }
 }

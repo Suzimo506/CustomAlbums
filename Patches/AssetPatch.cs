@@ -10,7 +10,6 @@ using CustomAlbums.Utilities;
 using HarmonyLib;
 using Il2CppAssets.Scripts.Database;
 using Il2CppAssets.Scripts.PeroTools.Commons;
-using Il2CppAssets.Scripts.PeroTools.GeneralLocalization;
 using Il2CppAssets.Scripts.PeroTools.Managers;
 using Il2CppInterop.Common;
 using Il2CppInterop.Runtime;
@@ -172,14 +171,14 @@ namespace CustomAlbums.Patches
                 return newAsset?.Pointer ?? assetPtr;
             });
 
-            AssetHandler.Add("albums_", (assetName, assetPtr, language) =>
+            AssetHandler.Add("albums_", (assetName, assetPtr, _) =>
             {
                 var jsonArray = Json.Deserialize<JsonArray>(new TextAsset(assetPtr).text);
 
                 // Adds the correct language for the "Custom Albums" album
                 jsonArray.Add(new
                 {
-                    title = AlbumManager.Languages[language]
+                    title = I18n.Get("custom_albums.title")
                 });
 
                 // Create and add the new asset with the correct lingual name of "Custom Albums"
@@ -395,8 +394,7 @@ namespace CustomAlbums.Patches
             // Get the method from the AssetHandler if it exists and run it, otherwise return assetPtr
             if (!AssetHandler.TryGetValue(handledAssetName, out var value)) return assetPtr;
 
-            var language = SingletonScriptableObject<LocalizationSettings>.instance.GetActiveOption("Language");
-            return value(assetName, assetPtr, language);
+            return value(assetName, assetPtr, string.Empty);
         }
 
         private static string GetHandledAssetName(string assetName)

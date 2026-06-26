@@ -9,7 +9,6 @@ using Il2Cpp;
 using Il2CppAssets.Scripts.Database;
 using Il2CppAssets.Scripts.Database.DataClass;
 using Il2CppAssets.Scripts.PeroTools.Commons;
-using Il2CppAssets.Scripts.PeroTools.GeneralLocalization;
 using Il2CppAssets.Scripts.PeroTools.Managers;
 using Il2CppAssets.Scripts.UI.Panels;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
@@ -24,36 +23,6 @@ namespace CustomAlbums.Managers
         private const int MaxAdditionsPerUpdate = 1;
         private const int MaxDeletionsPerUpdate = 3;
         private static readonly TimeSpan HotReloadBatchInterval = TimeSpan.FromMilliseconds(250);
-
-        // Localization texts for the notification banner
-        private static readonly Dictionary<string, string> AddedTranslations = new()
-        {
-            { "English", "Added {0} charts" },
-            { "ChineseS", "添加了 {0} 张谱面" },
-            { "ChineseT", "添加了 {0} 張譜面" },
-            { "Japanese", "{0}個の譜面を追加しました" },
-            { "Korean", "{0}개의 보면을 추가했습니다" }
-        };
-
-        private static readonly Dictionary<string, string> DeletedTranslations = new()
-        {
-            { "English", "Deleted {0} charts" },
-            { "ChineseS", "删除了 {0} 张谱面" },
-            { "ChineseT", "删除了 {0} 張譜面" },
-            { "Japanese", "{0}個の譜面を削除しました" },
-            { "Korean", "{0}개의 보면을 삭제했습니다" }
-        };
-
-        // Gets the formatted notification for the current language
-        private static string GetLocalizedMessage(Dictionary<string, string> translations, int count)
-        {
-            var language = SingletonScriptableObject<LocalizationSettings>.instance?.GetActiveOption("Language") ?? "English";
-            if (!translations.TryGetValue(language, out var format))
-            {
-                format = translations["English"];
-            }
-            return string.Format(format, count);
-        }
 
         // Thread-safe queues for FileSystemWatcher background events
         private static ConcurrentQueue<string> AlbumsToAdd { get; } = new();
@@ -726,13 +695,13 @@ namespace CustomAlbums.Managers
 
             if (PendingAddedNotice > 0)
             {
-                Il2CppAssets.Scripts.UI.Controls.ShowText.ShowInfo(GetLocalizedMessage(AddedTranslations, PendingAddedNotice));
+                Il2CppAssets.Scripts.UI.Controls.ShowText.ShowInfo(I18n.Format("hotreload.added", PendingAddedNotice));
                 PendingAddedNotice = 0;
             }
 
             if (PendingDeletedNotice > 0)
             {
-                Il2CppAssets.Scripts.UI.Controls.ShowText.ShowInfo(GetLocalizedMessage(DeletedTranslations, PendingDeletedNotice));
+                Il2CppAssets.Scripts.UI.Controls.ShowText.ShowInfo(I18n.Format("hotreload.deleted", PendingDeletedNotice));
                 PendingDeletedNotice = 0;
             }
         }

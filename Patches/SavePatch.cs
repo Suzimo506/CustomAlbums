@@ -233,7 +233,7 @@ namespace CustomAlbums.Patches
                 }
 
                 // Custom and HQ not present
-                noNetComp.text = "Headquarters mod is not loaded! ~(*´Д｀)";
+                noNetComp.text = I18n.Get("rank.hq_missing");
                 __instance.noNet.SetActive(true);
                 return false;
             }
@@ -248,7 +248,7 @@ namespace CustomAlbums.Patches
                         var noNetComp = __instance.noNet.GetComponent<UnityEngine.UI.Text>();
                         if (noNetComp != null)
                         {
-                            noNetComp.text = $"CRASH: {__exception.Message}\nCheck MelonLoader console for details.";
+                            noNetComp.text = I18n.Format("rank.crash", __exception.Message);
                         }
                         __instance.noNet.SetActive(true);
                         if (__instance.server != null) __instance.server.SetActive(false);

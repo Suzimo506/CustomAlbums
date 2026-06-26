@@ -14,7 +14,7 @@ namespace CustomAlbums
 
         public const string MelonName = "CustomAlbums";
         public const string MelonAuthor = "Two Fellas";
-        public const string MelonVersion = "4.2.4";
+        public const string MelonVersion = "4.2.5";
         private static string CurrentScene { get; set; } = string.Empty;
         internal static bool IsLobbyScene => CurrentScene == "UISystem_PC";
 

@@ -28,6 +28,7 @@ namespace CustomAlbums.UI
 
             Recover();
             if (_root == null) Create();
+            RefreshText();
             Position();
         }
 
@@ -97,7 +98,7 @@ namespace CustomAlbums.UI
 
             _label = textObj.AddComponent<Text>();
             ApplyFont(_label);
-            _label.text = "导入自制谱";
+            _label.text = I18n.Get("library.entry_button");
             _label.fontSize = 18;
             _label.alignment = TextAnchor.MiddleCenter;
             _label.horizontalOverflow = HorizontalWrapMode.Overflow;
@@ -143,6 +144,12 @@ namespace CustomAlbums.UI
             if (_root == null) return;
 
             _label = _root.transform.Find("TxtLabel")?.GetComponent<Text>();
+        }
+
+        private static void RefreshText()
+        {
+            if (_label == null) return;
+            _label.text = I18n.Get("library.entry_button");
         }
 
         private static void ApplyFont(Text text)

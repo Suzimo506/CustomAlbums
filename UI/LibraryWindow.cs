@@ -1,5 +1,6 @@
 using CustomAlbums.Data;
 using CustomAlbums.Managers;
+using CustomAlbums.Utilities;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.Events;
@@ -165,7 +166,7 @@ namespace CustomAlbums.UI
             if (_indexRefreshException == null)
                 RebuildList();
             else
-                ShowListMessage("谱面库加载失败，请查看 MelonLoader 日志");
+                ShowListMessage(I18n.Get("library.load_failed"));
             RefreshCategoryActionButton();
             ClearSelectionIfHidden();
         }
@@ -322,7 +323,7 @@ namespace CustomAlbums.UI
 
             CreateDifficultyFilters(panel);
 
-            var close = CreateButton(panel, "CloseButton", "关闭", ColorAccent, () =>
+            var close = CreateButton(panel, "CloseButton", I18n.Get("library.close"), ColorAccent, () =>
             {
                 LibraryUiSoundManager.Play(LibraryUiSound.Cancel);
                 Close();
@@ -342,8 +343,8 @@ namespace CustomAlbums.UI
             var activeCount = entries.Count(album => album.IsActive);
             var skippedCount = LibraryManager.LastSkippedCount;
             _countText.text = skippedCount > 0
-                ? $"候选 {entries.Count} / 已导入 {activeCount} / 跳过 {skippedCount}"
-                : $"候选 {entries.Count} / 已导入 {activeCount}";
+                ? I18n.Format("library.count_skipped", entries.Count, activeCount, skippedCount)
+                : I18n.Format("library.count", entries.Count, activeCount);
         }
 
         private static void RefreshCategoryActionButton()
@@ -355,8 +356,8 @@ namespace CustomAlbums.UI
             var color = action == CategoryBatchAction.None || busy ? ColorAccentSoft : ColorAccent;
             _categoryActionImage.color = color;
             _categoryActionLabel.text = busy
-                ? (_categoryBatchAction == CategoryBatchAction.Remove ? "移除中" : "导入中")
-                : action == CategoryBatchAction.Remove ? "移除分类" : "导入分类";
+                ? (_categoryBatchAction == CategoryBatchAction.Remove ? I18n.Get("library.removing") : I18n.Get("library.importing"))
+                : action == CategoryBatchAction.Remove ? I18n.Get("library.remove_category") : I18n.Get("library.import_category");
 
             var button = _categoryActionImage.GetComponent<Button>();
             if (button != null) button.colors = CreateButtonColors(color);
@@ -373,7 +374,7 @@ namespace CustomAlbums.UI
 
         private static void CreateCategoryActionButton(RectTransform panel)
         {
-            var actionButton = CreateButton(panel, "CategoryActionButton", "导入分类", ColorAccent, () =>
+            var actionButton = CreateButton(panel, "CategoryActionButton", I18n.Get("library.import_category"), ColorAccent, () =>
             {
                 var action = GetCategoryAction();
                 if (action == CategoryBatchAction.None || _categoryImportQueue != null)
@@ -390,7 +391,7 @@ namespace CustomAlbums.UI
             actionButton.anchorMin = new Vector2(1f, 0f);
             actionButton.anchorMax = new Vector2(1f, 0f);
             actionButton.pivot = new Vector2(1f, 0f);
-            actionButton.sizeDelta = new Vector2(168f, 46f);
+            actionButton.sizeDelta = new Vector2(190f, 46f);
             actionButton.anchoredPosition = new Vector2(-42f, 14f);
             RefreshCategoryActionButton();
         }
@@ -402,7 +403,7 @@ namespace CustomAlbums.UI
                 : LibraryManager.GetInactiveCategoryEntries(category).ToList();
             if (entries.Count == 0)
             {
-                SetPreviewStatus(action == CategoryBatchAction.Remove ? "当前分类没有已导入谱面" : "当前分类已全部导入");
+                SetPreviewStatus(action == CategoryBatchAction.Remove ? I18n.Get("library.category_no_imported") : I18n.Get("library.category_all_imported"));
                 RefreshCategoryActionButton();
                 return;
             }
@@ -450,8 +451,8 @@ namespace CustomAlbums.UI
             RebuildList();
             RefreshCategoryActionButton();
             SetPreviewStatus(_categoryImportActivated > 0
-                ? $"{(completedAction == CategoryBatchAction.Remove ? "已移除" : "已导入")} {_categoryImportActivated} 张谱面"
-                : completedAction == CategoryBatchAction.Remove ? "当前分类没有已导入谱面" : "当前分类已全部导入");
+                ? I18n.Format(completedAction == CategoryBatchAction.Remove ? "library.completed_remove" : "library.completed_import", _categoryImportActivated)
+                : completedAction == CategoryBatchAction.Remove ? I18n.Get("library.category_no_imported") : I18n.Get("library.category_all_imported"));
         }
 
         private static void SetPreviewStatus(string message)
@@ -461,7 +462,7 @@ namespace CustomAlbums.UI
 
         private static string GetCategoryBatchProgressVerb()
         {
-            return _categoryBatchAction == CategoryBatchAction.Remove ? "正在分批移除" : "正在分批导入";
+            return _categoryBatchAction == CategoryBatchAction.Remove ? I18n.Get("library.progress_remove") : I18n.Get("library.progress_import");
         }
 
         private static void EndCategorySaveScope()
@@ -492,7 +493,7 @@ namespace CustomAlbums.UI
             text.horizontalOverflow = HorizontalWrapMode.Overflow;
             SetStretch(text.rectTransform, 26f, 0f, -26f, 0f);
 
-            var placeholder = CreateText(root, "Placeholder", "搜索谱名、作者、标签...", 23, TextAnchor.MiddleLeft);
+            var placeholder = CreateText(root, "Placeholder", I18n.Get("library.search_placeholder"), 23, TextAnchor.MiddleLeft);
             placeholder.color = new Color(1f, 1f, 1f, 0.34f);
             placeholder.fontStyle = FontStyle.Italic;
             SetStretch(placeholder.rectTransform, 26f, 0f, -26f, 0f);
@@ -503,13 +504,13 @@ namespace CustomAlbums.UI
 
         private static void CreateDifficultyFilters(RectTransform panel)
         {
-            _minDifficultyWheelRect = CreateDifficultyWheel(panel, "MinDifficultyWheel", "最低", () => _pendingMinDifficulty, new Vector2(720f, -24f), DifficultyWheelKind.Min);
+            _minDifficultyWheelRect = CreateDifficultyWheel(panel, "MinDifficultyWheel", I18n.Get("library.min"), () => _pendingMinDifficulty, new Vector2(720f, -24f), DifficultyWheelKind.Min);
             _minDifficultyWheelTexts = GetWheelTexts(_minDifficultyWheelRect);
 
-            _maxDifficultyWheelRect = CreateDifficultyWheel(panel, "MaxDifficultyWheel", "最高", () => _pendingMaxDifficulty, new Vector2(720f, -70f), DifficultyWheelKind.Max);
+            _maxDifficultyWheelRect = CreateDifficultyWheel(panel, "MaxDifficultyWheel", I18n.Get("library.max"), () => _pendingMaxDifficulty, new Vector2(720f, -70f), DifficultyWheelKind.Max);
             _maxDifficultyWheelTexts = GetWheelTexts(_maxDifficultyWheelRect);
 
-            var apply = CreateButton(panel, "DifficultyApply", "筛选", ColorAccent, () =>
+            var apply = CreateButton(panel, "DifficultyApply", I18n.Get("library.filter"), ColorAccent, () =>
             {
                 LibraryUiSoundManager.Play(LibraryUiSound.Yes);
 
@@ -532,7 +533,7 @@ namespace CustomAlbums.UI
             apply.anchorMin = new Vector2(0f, 1f);
             apply.anchorMax = new Vector2(0f, 1f);
             apply.pivot = new Vector2(0f, 1f);
-            apply.sizeDelta = new Vector2(86f, 38f);
+            apply.sizeDelta = new Vector2(112f, 38f);
             apply.anchoredPosition = new Vector2(1168f, -45f);
 
             RefreshDifficultyWheels();
@@ -745,11 +746,11 @@ namespace CustomAlbums.UI
             _coverImage.color = new Color(1f, 1f, 1f, 0f);
             _coverImage.preserveAspect = true;
 
-            _coverPlaceholder = CreateText(coverFrame, "CoverPlaceholder", "NO COVER", 20, TextAnchor.MiddleCenter);
+            _coverPlaceholder = CreateText(coverFrame, "CoverPlaceholder", I18n.Get("library.no_cover"), 20, TextAnchor.MiddleCenter);
             _coverPlaceholder.color = new Color(1f, 1f, 1f, 0.28f);
             SetStretch(_coverPlaceholder.rectTransform, 0f, 0f, 0f, 0f);
 
-            _previewTitle = CreateText(_previewPanel, "PreviewTitle", "选择一张谱面", 26, TextAnchor.UpperLeft);
+            _previewTitle = CreateText(_previewPanel, "PreviewTitle", I18n.Get("library.preview_title"), 26, TextAnchor.UpperLeft);
             _previewTitle.color = Color.white;
             _previewTitle.fontStyle = FontStyle.Bold;
             _previewTitle.verticalOverflow = VerticalWrapMode.Truncate;
@@ -766,7 +767,7 @@ namespace CustomAlbums.UI
             _previewDetails.verticalOverflow = VerticalWrapMode.Truncate;
             SetFixedTop(_previewDetails.rectTransform, 28f, 354f, PreviewWidth - 56f, 112f);
 
-            _previewStatus = CreateText(_previewPanel, "PreviewStatus", "demo 会在选中后播放", 16, TextAnchor.LowerLeft);
+            _previewStatus = CreateText(_previewPanel, "PreviewStatus", I18n.Get("library.preview_demo_hint"), 16, TextAnchor.LowerLeft);
             _previewStatus.color = new Color(1f, 1f, 1f, 0.46f);
             _previewStatus.rectTransform.anchorMin = new Vector2(0f, 0f);
             _previewStatus.rectTransform.anchorMax = new Vector2(0f, 0f);
@@ -860,7 +861,7 @@ namespace CustomAlbums.UI
 
             if (_isIndexRefreshing && LibraryManager.Entries.Count == 0)
             {
-                ShowListMessage("正在加载谱面库...");
+                ShowListMessage(I18n.Get("library.loading"));
                 return;
             }
 
@@ -874,7 +875,7 @@ namespace CustomAlbums.UI
 
             if (albums.Count == 0)
             {
-                var empty = CreateText(_listContent, "Empty", "没有找到谱面", 28, TextAnchor.MiddleCenter);
+                var empty = CreateText(_listContent, "Empty", I18n.Get("library.empty"), 28, TextAnchor.MiddleCenter);
                 empty.color = new Color(1f, 1f, 1f, 0.68f);
                 empty.rectTransform.anchorMin = new Vector2(0f, 1f);
                 empty.rectTransform.anchorMax = new Vector2(1f, 1f);
@@ -975,9 +976,9 @@ namespace CustomAlbums.UI
             difficulty.rectTransform.anchorMax = new Vector2(1f, 0.5f);
             difficulty.rectTransform.pivot = new Vector2(1f, 0.5f);
             difficulty.rectTransform.sizeDelta = new Vector2(230f, 34f);
-            difficulty.rectTransform.anchoredPosition = new Vector2(-142f, 0f);
+            difficulty.rectTransform.anchoredPosition = new Vector2(-154f, 0f);
 
-            var action = CreateButton(row, "Action", entry.IsActive ? "移除" : "导入",
+            var action = CreateButton(row, "Action", entry.IsActive ? I18n.Get("library.remove") : I18n.Get("library.import"),
                 entry.IsActive ? new Color(0.46f, 0.16f, 0.42f, 0.92f) : ColorAccent, () =>
                 {
                     LibraryUiSoundManager.Play(entry.IsActive ? LibraryUiSound.Cancel : LibraryUiSound.Yes);
@@ -994,7 +995,7 @@ namespace CustomAlbums.UI
             action.anchorMin = new Vector2(1f, 0.5f);
             action.anchorMax = new Vector2(1f, 0.5f);
             action.pivot = new Vector2(1f, 0.5f);
-            action.sizeDelta = new Vector2(108f, 34f);
+            action.sizeDelta = new Vector2(120f, 34f);
             action.anchoredPosition = new Vector2(-16f, 0f);
         }
 
@@ -1063,10 +1064,10 @@ namespace CustomAlbums.UI
             if (_selectedEntry == null)
             {
                 ClearPreviewMedia(true);
-                _previewTitle.text = "未选择谱面";
+                _previewTitle.text = I18n.Get("library.not_selected");
                 _previewMeta.text = string.Empty;
                 _previewDetails.text = string.Empty;
-                _previewStatus.text = "从右侧列表选择一张谱面";
+                _previewStatus.text = I18n.Get("library.select_from_list");
                 if (_coverPlaceholder != null) _coverPlaceholder.gameObject.SetActive(false);
                 if (_coverFrameImage != null) _coverFrameImage.color = new Color(0.30f, 0.13f, 0.46f, 0.20f);
                 return;
@@ -1077,12 +1078,12 @@ namespace CustomAlbums.UI
             _previewMeta.text = Escape(info.Author);
             _previewDetails.text =
                 $"<color=#ffffff>BPM</color>    {Escape(info.Bpm)}\n" +
-                $"<color=#ffffff>难度</color>   {FormatDifficulties(info)}\n" +
-                $"<color=#ffffff>谱师</color>   <color=#ff63d6>{Escape(FormatCharters(info))}</color>\n" +
-                $"<color=#ffffff>分类</color>   {Escape(GetCategoryLabel(_selectedEntry.Category))}";
+                $"<color=#ffffff>{I18n.Get("library.label_difficulty")}</color>   {FormatDifficulties(info)}\n" +
+                $"<color=#ffffff>{I18n.Get("library.label_charter")}</color>   <color=#ff63d6>{Escape(FormatCharters(info))}</color>\n" +
+                $"<color=#ffffff>{I18n.Get("library.label_category")}</color>   {Escape(GetCategoryLabel(_selectedEntry.Category))}";
             _previewStatus.text = _selectedEntry.IsActive
-                ? "<color=#47f58d>已导入</color>"
-                : "<color=#ff5b7d>未导入</color>";
+                ? $"<color=#47f58d>{I18n.Get("library.status_imported")}</color>"
+                : $"<color=#ff5b7d>{I18n.Get("library.status_not_imported")}</color>";
             if (_coverFrameImage != null) _coverFrameImage.color = new Color(0.30f, 0.13f, 0.46f, 0.20f);
         }
 
@@ -1111,7 +1112,7 @@ namespace CustomAlbums.UI
                 .Take(3)
                 .Select(value => $"<color={GetDifficultyColor(value)}>{Escape(value)}</color>");
             var text = string.Join(" / ", values);
-            return string.IsNullOrEmpty(text) ? "<color=#ffffff66>-</color>" : $"难度  {text}";
+            return string.IsNullOrEmpty(text) ? "<color=#ffffff66>-</color>" : $"{I18n.Get("library.label_difficulty")}  {text}";
         }
 
         private static IEnumerable<float> GetDifficultyValues(AlbumInfo info)
@@ -1180,9 +1181,9 @@ namespace CustomAlbums.UI
         {
             return category switch
             {
-                "All" => "全部",
-                "Active" => "已导入",
-                "Unsorted" => "未分类",
+                "All" => I18n.Get("library.category_all"),
+                "Active" => I18n.Get("library.category_active"),
+                "Unsorted" => I18n.Get("library.category_unsorted"),
                 _ => category
             };
         }
